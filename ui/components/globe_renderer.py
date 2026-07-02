@@ -1111,10 +1111,14 @@ function atualizarAnalise() {{
   
   // Renderização ── TAB: PDF
   var pdfHtml = 
-    '<div class="res-card" style="text-align:center; padding:25px 15px;">' +
-      '<h4 style="border:none;">Relatorio Consolidado</h4>' +
-      '<p style="font-size:12px; margin-bottom:18px; line-height:1.5; color:#a6adc8;">Imprima ou salve os calculos consolidados deste enlace de comunicacao.</p>' +
-      '<button class="save-btn" onclick="window.print()">&#128196; Imprimir Relatorio</button>' +
+    '<div class="res-card" style="text-align:center; padding:15px 12px;">' +
+      '<h4>Relatório PDF Customizado</h4>' +
+      '<p style="font-size:11px; margin-bottom:12px; line-height:1.4; color:#a6adc8;">Você pode baixar um PDF técnico completo contendo a tabela de Friis por componentes e o gráfico vetorial das curvas de BER diretamente no <b>painel esquerdo do simulador</b>.</p>' +
+    '</div>' +
+    '<div class="res-card" style="text-align:center; padding:15px 12px;">' +
+      '<h4>Impressão Rápida</h4>' +
+      '<p style="font-size:11px; margin-bottom:12px; line-height:1.4; color:#a6adc8;">Ou clique abaixo para imprimir o relatório técnico limpo formatado para A4 pelo navegador.</p>' +
+      '<button class="save-btn" onclick="window.print()">&#128196; Imprimir Tela</button>' +
     '</div>';
   document.getElementById('tab-pdf').innerHTML = pdfHtml;
 }}
