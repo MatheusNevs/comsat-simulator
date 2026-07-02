@@ -1,18 +1,7 @@
-import streamlit as st
-from ui.components.globe_renderer import create_globe_figure
+import streamlit.components.v1 as components
+from ui.components.globe_renderer import render_globe_html, GLOBE_HEIGHT_PX
 
-def render_tab_globe():
-    st.subheader("🌍 Visualização do Cenário")
-    
-    satellites = st.session_state.get('satellites', [])
-    stations = st.session_state.get('stations', [])
-    
-    if not satellites and not stations:
-        st.info("Nenhum satélite ou estação configurado. Use o painel lateral para adicionar elementos ao cenário.")
-        return
 
-    # Renderiza o globo no Plotly
-    fig = create_globe_figure(satellites, stations)
-    
-    # Exibe o gráfico no Streamlit
-    st.plotly_chart(fig, use_container_width=True)
+def render_tab_globe(satellites, stations):
+    html = render_globe_html(satellites, stations)
+    components.html(html, height=GLOBE_HEIGHT_PX, scrolling=False)
