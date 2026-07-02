@@ -96,7 +96,7 @@ html, body {{ width:100%; height:100%; background:#000011; overflow:hidden; font
 #closeInfo:hover {{ color:#fff; }}
 #infoBody {{ padding:15px; font-size:12px; max-height:550px; overflow-y:auto; }}
 .field {{ margin-bottom:10px; }}
-.field label {{ display:block; color:#7a9cc0; font-size:10px; margin-bottom:3px; text-transform:uppercase; letter-spacing:0.5px; }}
+.field label {{ display:flex; align-items:center; color:#7a9cc0; font-size:10px; margin-bottom:3px; text-transform:uppercase; letter-spacing:0.5px; }}
 .field input, .field select {{ width:100%; background:rgba(20,40,80,0.65); border:1px solid #1e5f8a; border-radius:5px; color:#cdd6f4; font-size:12.5px; padding:6px 9px; transition:border-color .15s; outline:none; }}
 .field input:focus, .field select:focus {{ border-color:#89dceb; background:rgba(30,60,120,0.8); }}
 .save-btn {{ width:100%; margin-top:12px; background:rgba(0,120,200,0.75); color:#fff; border:1px solid #1e5f8a; border-radius:7px; padding:8px; cursor:pointer; font-size:12.5px; font-weight:600; transition:background .2s; }}
@@ -139,20 +139,81 @@ html, body {{ width:100%; height:100%; background:#000011; overflow:hidden; font
 /* ── Result display styling ── */
 .res-card {{ background:rgba(14,28,56,0.5); border:1px solid #1e5f8a; border-radius:8px; padding:12px; margin-bottom:12px; }}
 .res-card h4 {{ margin:0 0 8px 0; color:#89dceb; font-size:13px; font-weight:600; border-bottom:1px solid rgba(30,95,138,0.4); padding-bottom:4px; }}
-.res-row {{ display:flex; justify-content:space-between; font-size:12px; margin-bottom:5px; }}
+.res-row {{ display:flex; justify-content:space-between; align-items:center; font-size:12px; margin-bottom:5px; }}
 .res-row:last-child {{ margin-bottom:0; }}
-.res-label {{ color:#7a9cc0; }}
+.res-label {{ color:#7a9cc0; display:flex; align-items:center; }}
 .res-val {{ color:#cdd6f4; font-weight:600; font-family:monospace; }}
 .badge {{ display:inline-block; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:700; text-transform:uppercase; }}
 .badge-green {{ background:rgba(166,227,161,0.2); color:#a6e3a1; border:1px solid #a6e3a1; }}
 .badge-yellow {{ background:rgba(249,226,175,0.2); color:#f9e2af; border:1px solid #f9e2af; }}
 .badge-red {{ background:rgba(243,139,168,0.2); color:#f38ba8; border:1px solid #f38ba8; }}
 
-/* ── Estilos de Impressão (Etapa 6 PDF) ── */
+/* Elevando a linha em foco para que o tooltip fique por cima de todas as outras linhas */
+.field:hover, .res-row:hover {{
+  position:relative;
+  z-index:9999;
+}}
+
+/* ── TOOLTIPS (ⓘ) ── */
+.tooltip-info {{
+  position:relative;
+  display:inline-flex;
+  justify-content:center;
+  align-items:center;
+  cursor:help;
+  color:#89dceb;
+  margin-left:5px;
+  font-size:11px;
+  background:rgba(137,220,235,0.1);
+  border-radius:50%;
+  width:14px;
+  height:14px;
+  font-weight:bold;
+  z-index:99999;
+}}
+.tooltip-info .tooltiptext {{
+  visibility:hidden;
+  width:200px;
+  background-color:rgba(14,28,56,0.98);
+  color:#cdd6f4;
+  text-align:left;
+  border:1px solid #1e5f8a;
+  border-radius:6px;
+  padding:8px 10px;
+  font-size:11px;
+  font-weight:normal;
+  text-transform:none;
+  letter-spacing:0px;
+  position:absolute;
+  z-index:99999 !important;
+  top:130%;
+  left:50%;
+  transform:translateX(-50%);
+  opacity:0;
+  transition:opacity 0.2s;
+  box-shadow:0 4px 15px rgba(0,0,0,0.6);
+  pointer-events:none;
+}}
+.tooltip-info .tooltiptext::after {{
+  content:"";
+  position:absolute;
+  bottom:100%;
+  left:50%;
+  margin-left:-5px;
+  border-width:5px;
+  border-style:solid;
+  border-color:transparent transparent #1e5f8a transparent;
+}}
+.tooltip-info:hover .tooltiptext {{
+  visibility:visible;
+  opacity:1;
+}}
+
+/* ── Estilos de Impressão ── */
 #printTitle {{ display:none; }}
 @media print {{
   html, body {{ background:#fff !important; color:#000 !important; overflow:visible !important; }}
-  #globeViz, #toggleBtn, #infoPanel, #linkSelectorContainer, .rtabs, #closePanelBtn, #rightPanelHead {{ display:none !important; }}
+  #globeViz, #toggleBtn, #infoPanel, #linkSelectorContainer, .rtabs, #closePanelBtn, #rightPanelHead, .tooltip-info {{ display:none !important; }}
   #rightPanel {{ position:static !important; width:100% !important; height:auto !important; box-shadow:none !important; border:none !important; background:#fff !important; color:#000 !important; display:block !important; }}
   .rtab-body {{ display:block !important; opacity:1 !important; color:#000 !important; background:#fff !important; page-break-after:auto !important; padding:0 !important; margin-bottom:30px !important; }}
   .res-card {{ border:1px solid #bbb !important; background:#fff !important; color:#000 !important; page-break-inside:avoid !important; box-shadow:none !important; }}
@@ -256,6 +317,11 @@ var LOSS_POINT = 0.5;
 var LOSS_POL = 0.3;
 var LOSS_RX_LINE = 0.5;
 var LOSS_TX_LINE = 1.0;
+
+// ── Helper para Tooltips ──
+function tooltip(info) {{
+  return '<span class="tooltip-info">i<span class="tooltiptext">' + info + '</span></span>';
+}}
 
 // ── Resize iframe ──
 (function() {{
@@ -424,7 +490,7 @@ function showSatPanel(d) {{
   currentSat = d;
   
   var selectHtml = 
-    '<div class="field"><label>Diagrama de Radiacao</label>' +
+    '<div class="field"><label>Diagrama de Radiacao' + tooltip('Modelo de decaimento do ganho conforme o desvio angular (off-axis) do feixe.') + '</label>' +
     '<select id="f_pat_type" onchange="onSatPatternChange()">' +
       '<option value="Isotrópica"' + (d.pattern_type === 'Isotrópica' ? ' selected' : '') + '>Isotrópica</option>' +
       '<option value="Modelo Parabólico"' + (d.pattern_type === 'Modelo Parabólico' ? ' selected' : '') + '>Modelo Parabólico</option>' +
@@ -435,13 +501,13 @@ function showSatPanel(d) {{
 
   showInfo('Satelite: ' + d.name,
     '<form onsubmit="saveSat(event)">' +
-    '<div class="field"><label>Nome</label><input type="text" id="f_name" value="' + d.name + '"></div>' +
-    '<div class="field"><label>Longitude Orbital (graus)</label><input type="number" id="f_lng" step="0.1" value="' + d.lng + '"></div>' +
-    '<div class="field"><label>Frequencia (GHz)</label><input type="number" id="f_freq" step="0.1" value="' + d.frequency + '"></div>' +
-    '<div class="field"><label>Potencia TX (W)</label><input type="number" id="f_power" step="1" value="' + d.tx_power + '"></div>' +
-    '<div class="field"><label>Ganho Antena TX Pico (dBi)</label><input type="number" id="f_gain" step="0.5" value="' + d.tx_gain + '"></div>' +
+    '<div class="field"><label>Nome' + tooltip('Identificador textual do satélite.') + '</label><input type="text" id="f_name" value="' + d.name + '"></div>' +
+    '<div class="field"><label>Longitude Orbital (graus)' + tooltip('Posição do satélite na órbita geoestacionária sobre o equador (-180° a 180°).') + '</label><input type="number" id="f_lng" step="0.1" value="' + d.lng + '"></div>' +
+    '<div class="field"><label>Frequencia (GHz)' + tooltip('Frequência da portadora RF do canal de downlink.') + '</label><input type="number" id="f_freq" step="0.1" value="' + d.frequency + '"></div>' +
+    '<div class="field"><label>Potencia TX (W)' + tooltip('Potência elétrica RF de transmissão gerada pelo amplificador HPA/SSPA.') + '</label><input type="number" id="f_power" step="1" value="' + d.tx_power + '"></div>' +
+    '<div class="field"><label>Ganho Antena TX Pico (dBi)' + tooltip('Ganho máximo de diretividade da antena de transmissão do satélite no centro do apontamento.') + '</label><input type="number" id="f_gain" step="0.5" value="' + d.tx_gain + '"></div>' +
     selectHtml +
-    '<div class="field" id="f_pat_hpbw_field" style="display:' + hpbwStyle + ';"><label>Largura de Feixe θ_3dB (graus)</label><input type="number" id="f_pat_hpbw" step="0.1" value="' + (d.pattern_hpbw || 2.0) + '"></div>' +
+    '<div class="field" id="f_pat_hpbw_field" style="display:' + hpbwStyle + ';"><label>Largura de Feixe θ_3dB (graus)' + tooltip('Abertura angular (HPBW) onde o ganho da antena cai 3 dB em relação ao pico.') + '</label><input type="number" id="f_pat_hpbw" step="0.1" value="' + (d.pattern_hpbw || 2.0) + '"></div>' +
     '<button class="save-btn" type="submit">&#128190; Salvar</button>' +
     '</form><div id="saveMsg">&#9989; Salvo!</div>'
   );
@@ -451,7 +517,7 @@ function showStationPanel(d) {{
   currentStation = d;
   
   var modeSelect = 
-    '<div class="field"><label>Definicao do Ganho</label>' +
+    '<div class="field"><label>Definicao do Ganho' + tooltip('Escolha entre inserir o valor final em dBi diretamente ou calculá-lo a partir das dimensões físicas da antena.') + '</label>' +
     '<select id="s_gain_mode" onchange="onStationGainModeChange()">' +
       '<option value="Valor Direto"' + (d.gain_mode === 'Valor Direto' ? ' selected' : '') + '>Valor Direto (dBi)</option>' +
       '<option value="Diâmetro e Eficiência"' + (d.gain_mode === 'Diâmetro e Eficiência' ? ' selected' : '') + '>Diâmetro e Eficiência</option>' +
@@ -462,27 +528,27 @@ function showStationPanel(d) {{
 
   showInfo('Estacao: ' + d.name,
     '<form onsubmit="saveStation(event)">' +
-    '<div class="field"><label>Nome</label><input type="text" id="s_name" value="' + d.name + '"></div>' +
-    '<div class="field"><label>Latitude</label><input type="number" id="s_lat" step="0.0001" value="' + d.lat.toFixed(4) + '"></div>' +
-    '<div class="field"><label>Longitude</label><input type="number" id="s_lng" step="0.0001" value="' + d.lng.toFixed(4) + '"></div>' +
+    '<div class="field"><label>Nome' + tooltip('Identificador da estação terrena.') + '</label><input type="text" id="s_name" value="' + d.name + '"></div>' +
+    '<div class="field"><label>Latitude' + tooltip('Latitude geográfica de instalação da estação.') + '</label><input type="number" id="s_lat" step="0.0001" value="' + d.lat.toFixed(4) + '"></div>' +
+    '<div class="field"><label>Longitude' + tooltip('Longitude geográfica de instalação da estação.') + '</label><input type="number" id="s_lng" step="0.0001" value="' + d.lng.toFixed(4) + '"></div>' +
     
     modeSelect +
     
     '<div id="s_gain_direct_field" style="display:' + directStyle + ';">' +
-      '<div class="field"><label>Ganho Antena RX (dBi)</label><input type="number" id="s_gain" step="0.5" value="' + d.rx_gain + '"></div>' +
+      '<div class="field"><label>Ganho Antena RX (dBi)' + tooltip('Ganho máximo de diretividade da antena receptora.') + '</label><input type="number" id="s_gain" step="0.5" value="' + d.rx_gain + '"></div>' +
     '</div>' +
     
     '<div id="s_gain_phys_field" style="display:' + physStyle + ';">' +
-      '<div class="field"><label>Diâmetro da Antena (m)</label><input type="number" id="s_diam" step="0.1" value="' + (d.antenna_diameter || 1.8) + '"></div>' +
-      '<div class="field"><label>Eficiência da Antena (%)</label><input type="number" id="s_eff" step="5" value="' + (d.antenna_efficiency || 60.0) + '"></div>' +
+      '<div class="field"><label>Diâmetro da Antena (m)' + tooltip('Diâmetro físico da abertura refletora parabólica em metros.') + '</label><input type="number" id="s_diam" step="0.1" value="' + (d.antenna_diameter || 1.8) + '"></div>' +
+      '<div class="field"><label>Eficiência da Antena (%)' + tooltip('Eficiência de conversão eletromagnética da abertura refletora (geralmente entre 50% e 75%).') + '</label><input type="number" id="s_eff" step="5" value="' + (d.antenna_efficiency || 60.0) + '"></div>' +
     '</div>' +
     
     '<h4 style="margin-top:12px; margin-bottom:6px; color:#89dceb; font-size:11px; border-bottom:1px solid #1e5f8a; padding-bottom:3px; text-transform:uppercase;">Parâmetros de Ruído</h4>' +
-    '<div class="field"><label>Temp. Antena (K)</label><input type="number" id="s_t_ant" step="5" value="' + (d.temp_antenna || 50.0) + '"></div>' +
-    '<div class="field"><label>Temp. LNA (K)</label><input type="number" id="s_t_lna" step="5" value="' + (d.temp_lna || 80.0) + '"></div>' +
-    '<div class="field"><label>Ganho LNA (dB)</label><input type="number" id="s_g_lna" step="1" value="' + (d.gain_lna || 50.0) + '"></div>' +
-    '<div class="field"><label>Temp. Downconverter (K)</label><input type="number" id="s_t_down" step="10" value="' + (d.temp_down || 290.0) + '"></div>' +
-    '<div class="field"><label>Rec. Noise Figure (dB)</label><input type="number" id="s_nf_rec" step="0.5" value="' + (d.nf_rec || 8.0) + '"></div>' +
+    '<div class="field"><label>Temp. Antena (K)' + tooltip('Temperatura equivalente de ruído térmico coletada do espaço/atmosfera pela antena receptora.') + '</label><input type="number" id="s_t_ant" step="5" value="' + (d.temp_antenna || 50.0) + '"></div>' +
+    '<div class="field"><label>Temp. LNA (K)' + tooltip('Temperatura equivalente de ruído interno do Amplificador de Baixo Ruído (LNA).') + '</label><input type="number" id="s_t_lna" step="5" value="' + (d.temp_lna || 80.0) + '"></div>' +
+    '<div class="field"><label>Ganho LNA (dB)' + tooltip('Ganho de amplificação de potência RF fornecido pelo LNA para atenuar o ruído dos estágios posteriores.') + '</label><input type="number" id="s_g_lna" step="1" value="' + (d.gain_lna || 50.0) + '"></div>' +
+    '<div class="field"><label>Temp. Downconverter (K)' + tooltip('Temperatura de ruído do conversor de frequência RF para FI (Downconverter).') + '</label><input type="number" id="s_t_down" step="10" value="' + (d.temp_down || 290.0) + '"></div>' +
+    '<div class="field"><label>Rec. Noise Figure (dB)' + tooltip('Figura de ruído (NF) intrínseca do receptor final demodulador.') + '</label><input type="number" id="s_nf_rec" step="0.5" value="' + (d.nf_rec || 8.0) + '"></div>' +
 
     '<button class="save-btn" type="submit">&#128190; Salvar</button>' +
     '</form><div id="saveMsg">&#9989; Salvo!</div>'
@@ -735,7 +801,7 @@ function gerarWaterfallHtml(ptx_dbw, l_tx, g_tx, fspl, l_other, g_rx, prx_dbw) {
       // Pt
       '<div>' +
         '<div style="display:flex; justify-content:space-between; margin-bottom:2px;">' +
-          '<span style="color:#a6adc8;">1. Potência do Transmissor (Pt)</span>' +
+          '<span style="color:#a6adc8;">1. Potência do Transmissor (Pt) ' + tooltip('Potência eletromagnética RF efetiva de saída do transmissor (HPA).') + '</span>' +
           '<span class="res-val">' + ptx_dbw.toFixed(1) + ' dBW</span>' +
         '</div>' +
         '<div style="background:rgba(255,255,255,0.06); height:6px; border-radius:3px;">' +
@@ -745,7 +811,7 @@ function gerarWaterfallHtml(ptx_dbw, l_tx, g_tx, fspl, l_other, g_rx, prx_dbw) {
       // Gt
       '<div>' +
         '<div style="display:flex; justify-content:space-between; margin-bottom:2px;">' +
-          '<span style="color:#a6e3a1;">2. Ganho Antena Sat (Gt)</span>' +
+          '<span style="color:#a6e3a1;">2. Ganho Antena Sat (Gt) ' + tooltip('Ganho da antena transmissora do satélite na direção angular específica do terminal receptor.') + '</span>' +
           '<span class="res-val" style="color:#a6e3a1;">+' + g_tx.toFixed(1) + ' dBi</span>' +
         '</div>' +
         '<div style="background:rgba(255,255,255,0.06); height:6px; border-radius:3px;">' +
@@ -755,7 +821,7 @@ function gerarWaterfallHtml(ptx_dbw, l_tx, g_tx, fspl, l_other, g_rx, prx_dbw) {
       // Ltx
       '<div>' +
         '<div style="display:flex; justify-content:space-between; margin-bottom:2px;">' +
-          '<span style="color:#f38ba8;">3. Perda Linha Guia Sat (Ltx)</span>' +
+          '<span style="color:#f38ba8;">3. Perda Linha Guia Sat (Ltx) ' + tooltip('Perda de atenuação nos conectores e guia de onda entre o transmissor e a antena do satélite.') + '</span>' +
           '<span class="res-val" style="color:#f38ba8;">-' + l_tx.toFixed(1) + ' dB</span>' +
         '</div>' +
         '<div style="background:rgba(255,255,255,0.06); height:6px; border-radius:3px;">' +
@@ -765,7 +831,7 @@ function gerarWaterfallHtml(ptx_dbw, l_tx, g_tx, fspl, l_other, g_rx, prx_dbw) {
       // FSPL
       '<div>' +
         '<div style="display:flex; justify-content:space-between; margin-bottom:2px;">' +
-          '<span style="color:#f38ba8;">4. Perda por Espaço Livre (FSPL)</span>' +
+          '<span style="color:#f38ba8;">4. Perda por Espaço Livre (FSPL) ' + tooltip('Atenuação natural da energia devido à dispersão geométrica da onda esférica no vácuo.') + '</span>' +
           '<span class="res-val" style="color:#f38ba8;">-' + fspl.toFixed(1) + ' dB</span>' +
         '</div>' +
         '<div style="background:rgba(255,255,255,0.06); height:6px; border-radius:3px;">' +
@@ -775,7 +841,7 @@ function gerarWaterfallHtml(ptx_dbw, l_tx, g_tx, fspl, l_other, g_rx, prx_dbw) {
       // L_other
       '<div>' +
         '<div style="display:flex; justify-content:space-between; margin-bottom:2px;">' +
-          '<span style="color:#f38ba8;">5. Outras Perdas (Atmos/Chuva/Apont/Pol/Lrx)</span>' +
+          '<span style="color:#f38ba8;">5. Outras Perdas ' + tooltip('Soma das atenuações atmosféricas, atenuação por chuva, erros de apontamento, perdas de polarização e perdas de cabo no receptor.') + '</span>' +
           '<span class="res-val" style="color:#f38ba8;">-' + l_other.toFixed(1) + ' dB</span>' +
         '</div>' +
         '<div style="background:rgba(255,255,255,0.06); height:6px; border-radius:3px;">' +
@@ -785,7 +851,7 @@ function gerarWaterfallHtml(ptx_dbw, l_tx, g_tx, fspl, l_other, g_rx, prx_dbw) {
       // Grx
       '<div>' +
         '<div style="display:flex; justify-content:space-between; margin-bottom:2px;">' +
-          '<span style="color:#a6e3a1;">6. Ganho Antena Receptor (Grx)</span>' +
+          '<span style="color:#a6e3a1;">6. Ganho Antena Receptor (Grx) ' + tooltip('Ganho máximo de diretividade da antena refletora parabólica da estação terrena.') + '</span>' +
           '<span class="res-val" style="color:#a6e3a1;">+' + g_rx.toFixed(1) + ' dBi</span>' +
         '</div>' +
         '<div style="background:rgba(255,255,255,0.06); height:6px; border-radius:3px;">' +
@@ -795,7 +861,7 @@ function gerarWaterfallHtml(ptx_dbw, l_tx, g_tx, fspl, l_other, g_rx, prx_dbw) {
       // Prx
       '<div style="border-top:1px solid rgba(255,255,255,0.1); padding-top:6px;">' +
         '<div style="display:flex; justify-content:space-between; margin-bottom:2px;">' +
-          '<span style="color:#f9e2af; font-weight:700;">7. Potência Final Recebida (Prx)</span>' +
+          '<span style="color:#f9e2af; font-weight:700;">7. Potência Final Recebida (Prx) ' + tooltip('Potência útil final do portador eletromagnético RF captada pelo alimentador da estação terrena.') + '</span>' +
           '<span class="res-val" style="color:#f9e2af;">' + prx_dbw.toFixed(1) + ' dBW</span>' +
         '</div>' +
       '</div>' +
@@ -952,14 +1018,14 @@ function atualizarAnalise() {{
   
   var linkHtml = 
     '<div class="res-card"><h4>Geometria & Apontamento</h4>' +
-      '<div class="res-row"><span class="res-label">Distancia (Slant Range)</span><span class="res-val">' + geo.distance.toFixed(2) + ' km</span></div>' +
-      '<div class="res-row"><span class="res-label">Angulo de Elevacao</span><span class="res-val">' + geo.elevation.toFixed(2) + '&deg;</span></div>' +
-      '<div class="res-row"><span class="res-label">Off-Axis da Antena (Sat.)</span><span class="res-val">' + geo.offAxis.toFixed(2) + '&deg;</span></div>' +
+      '<div class="res-row"><span class="res-label">Distancia (Slant Range) ' + tooltip('Distância geométrica em linha de visada direta entre o satélite e a estação terrena.') + '</span><span class="res-val">' + geo.distance.toFixed(2) + ' km</span></div>' +
+      '<div class="res-row"><span class="res-label">Angulo de Elevacao ' + tooltip('Ângulo formado entre o horizonte local da estação e o satélite no céu.') + '</span><span class="res-val">' + geo.elevation.toFixed(2) + '&deg;</span></div>' +
+      '<div class="res-row"><span class="res-label">Off-Axis da Antena (Sat.) ' + tooltip('Desvio angular da estação em relação à direção principal do feixe de transmissão do satélite.') + '</span><span class="res-val">' + geo.offAxis.toFixed(2) + '&deg;</span></div>' +
     '</div>' +
     waterfallHtml +
     '<div class="res-card"><h4>Nivel de Sinal Recebido & Margem</h4>' +
-      '<div class="res-row"><span class="res-label">Ganho Antena Receptor</span><span class="res-val">' + st.rx_gain.toFixed(2) + ' dBi</span></div>' +
-      '<div class="res-row"><span class="res-label">Potencia Recebida (Prx)</span><span class="res-val" style="color:#a6e3a1;">' + prx_dbm.toFixed(2) + ' dBm</span></div>' +
+      '<div class="res-row"><span class="res-label">Ganho Antena Receptor ' + tooltip('Ganho máximo de diretividade da antena receptora.') + '</span><span class="res-val">' + st.rx_gain.toFixed(2) + ' dBi</span></div>' +
+      '<div class="res-row"><span class="res-label">Potencia Recebida (Prx) ' + tooltip('Potência absoluta recebida convertida em dBm.') + '</span><span class="res-val" style="color:#a6e3a1;">' + prx_dbm.toFixed(2) + ' dBm</span></div>' +
       '<div style="text-align:center; margin-top:10px;">' + margemBadge + '</div>' +
     '</div>';
   document.getElementById('tab-link').innerHTML = linkHtml;
@@ -971,7 +1037,7 @@ function atualizarAnalise() {{
   
   // Renderização ── TAB: RUIDO (Com Tabela de Cascata de Componentes)
   var noiseHtml = 
-    '<div class="res-card"><h4>Temperatura de Ruido do Sistema (Tsys)</h4>' +
+    '<div class="res-card"><h4>Temperatura de Ruido do Sistema (Tsys) ' + tooltip('Temperatura equivalente acumulada resultante da soma das perdas externas (antena) e ruído interno em cascata de Friis.') + '</h4>' +
       '<div class="res-row"><span class="res-label">Temp. Ruido Sistema (Tsys)</span><span class="res-val" style="color:#f9e2af;">' + t_sys.toFixed(1) + ' K</span></div>' +
       '<table style="width:100%; border-collapse:collapse; margin-top:10px; font-size:11px; text-align:left;">' +
         '<thead>' +
@@ -984,19 +1050,19 @@ function atualizarAnalise() {{
         '</thead>' +
         '<tbody>' +
           '<tr style="border-bottom:1px solid rgba(255,255,255,0.05);">' +
-            '<td style="padding:4px 0;">Antena</td>' +
+            '<td style="padding:4px 0;">Antena ' + tooltip('Temperatura captada do meio ambiente pela antena receptora.') + '</td>' +
             '<td style="padding:4px 0; text-align:right;">' + st.temp_antenna.toFixed(1) + '</td>' +
             '<td style="padding:4px 0; text-align:right;">-</td>' +
             '<td style="padding:4px 0; text-align:right;">' + c_ant.toFixed(1) + '</td>' +
           '</tr>' +
           '<tr style="border-bottom:1px solid rgba(255,255,255,0.05);">' +
-            '<td style="padding:4px 0;">LNA</td>' +
+            '<td style="padding:4px 0;">LNA ' + tooltip('Temperatura de ruído físico própria do LNA.') + '</td>' +
             '<td style="padding:4px 0; text-align:right;">' + st.temp_lna.toFixed(1) + '</td>' +
             '<td style="padding:4px 0; text-align:right;">' + st.gain_lna.toFixed(1) + '</td>' +
             '<td style="padding:4px 0; text-align:right;">' + c_lna.toFixed(1) + '</td>' +
           '</tr>' +
           '<tr>' +
-            '<td style="padding:4px 0;">Rec/Mixer</td>' +
+            '<td style="padding:4px 0;">Rec/Mixer ' + tooltip('Contribuição de ruído dos estágios subsequentes (Downconverter e Receptor) dividida pelo ganho do LNA.') + '</td>' +
             '<td style="padding:4px 0; text-align:right;">' + (t_rec_k + st.temp_down).toFixed(1) + '</td>' +
             '<td style="padding:4px 0; text-align:right;">-</td>' +
             '<td style="padding:4px 0; text-align:right;">' + c_other.toFixed(3) + '</td>' +
@@ -1005,14 +1071,14 @@ function atualizarAnalise() {{
       '</table>' +
     '</div>' +
     '<div class="res-card"><h4>Figura de Merito & Densidades</h4>' +
-      '<div class="res-row"><span class="res-label">Figura de Merito G/T</span><span class="res-val">' + gt.toFixed(2) + ' dB/K</span></div>' +
-      '<div class="res-row"><span class="res-label">Densidade de Ruido N0</span><span class="res-val">' + n0.toFixed(1) + ' dBW/Hz</span></div>' +
-      '<div class="res-row"><span class="res-label">Relacao C/N0</span><span class="res-val" style="color:#89dceb;">' + cn0.toFixed(2) + ' dB-Hz</span></div>' +
+      '<div class="res-row"><span class="res-label">Figura de Merito G/T ' + tooltip('Capacidade do receptor de extrair portadora em relação ao nível de ruído equivalente do sistema.') + '</span><span class="res-val">' + gt.toFixed(2) + ' dB/K</span></div>' +
+      '<div class="res-row"><span class="res-label">Densidade de Ruido N0 ' + tooltip('Potência espectral do ruído térmico normalizado em 1 Hz de banda (k * Tsys).') + '</span><span class="res-val">' + n0.toFixed(1) + ' dBW/Hz</span></div>' +
+      '<div class="res-row"><span class="res-label">Relacao C/N0 ' + tooltip('Relação portadora-ruído normalizada por densidade espectral de 1 Hz.') + '</span><span class="res-val" style="color:#89dceb;">' + cn0.toFixed(2) + ' dB-Hz</span></div>' +
     '</div>' +
     '<div class="res-card"><h4>Ruido no Canal</h4>' +
-      '<div class="field"><label>Largura de Banda do Canal (MHz)</label>' +
+      '<div class="field"><label>Largura de Banda do Canal (MHz) ' + tooltip('Largura de banda do transponder RF ocupada pelo sinal transmitido.') + '</label>' +
       '<input type="number" id="inp_bw" step="1" value="' + BW_MHZ + '" oninput="changeBW(this.value)"></div>' +
-      '<div class="res-row"><span class="res-label">Relacao C/N no Canal</span><span class="res-val">' + cn.toFixed(2) + ' dB</span></div>' +
+      '<div class="res-row"><span class="res-label">Relacao C/N no Canal ' + tooltip('Relação Portadora-Ruído total integrada na banda inteira de recepção (C / (N0 * BW)).') + '</span><span class="res-val">' + cn.toFixed(2) + ' dB</span></div>' +
     '</div>';
   document.getElementById('tab-noise').innerHTML = noiseHtml;
   
@@ -1025,9 +1091,9 @@ function atualizarAnalise() {{
                                
   var perfHtml = 
     '<div class="res-card"><h4>Configuracoes de Transmissao</h4>' +
-      '<div class="field"><label>Taxa de Bits Rb (Mbps)</label>' +
+      '<div class="field"><label>Taxa de Bits Rb (Mbps) ' + tooltip('Taxa de dados líquida efetiva transmitida por segundo.') + '</label>' +
       '<input type="number" id="inp_rb" step="1" value="' + RB_MBPS + '" oninput="changeRB(this.value)"></div>' +
-      '<div class="field"><label>Modulacao</label>' +
+      '<div class="field"><label>Modulacao ' + tooltip('Esquema de modulação de fase ou amplitude utilizado para formatar o fluxo digital.') + '</label>' +
       '<select id="inp_mod" onchange="changeMod(this.value)">' +
         '<option value="BPSK"' + (MOD_TYPE === 'BPSK' ? ' selected' : '') + '>BPSK</option>' +
         '<option value="QPSK"' + (MOD_TYPE === 'QPSK' ? ' selected' : '') + '>QPSK</option>' +
@@ -1036,8 +1102,8 @@ function atualizarAnalise() {{
       '</select></div>' +
     '</div>' +
     '<div class="res-card"><h4>Desempenho Estimado</h4>' +
-      '<div class="res-row"><span class="res-label">Relacao Eb/N0 calculada</span><span class="res-val" style="color:#a6e3a1;">' + ebn0.toFixed(2) + ' dB</span></div>' +
-      '<div class="res-row"><span class="res-label">Bit Error Rate (BER)</span><span class="res-val" style="color:#f38ba8;">' + ber.toExponential(3) + '</span></div>' +
+      '<div class="res-row"><span class="res-label">Relacao Eb/N0 calculada ' + tooltip('Relação de energia por bit em relação à densidade espectral de ruído, métrica base para cálculo da BER.') + '</span><span class="res-val" style="color:#a6e3a1;">' + ebn0.toFixed(2) + ' dB</span></div>' +
+      '<div class="res-row"><span class="res-label">Bit Error Rate (BER) ' + tooltip('Probabilidade estatística média de erro de bit na recepção.') + '</span><span class="res-val" style="color:#f38ba8;">' + ber.toExponential(3) + '</span></div>' +
       '<div style="text-align:center; margin-top:10px;">' + berBadge + '</div>' +
       '<div style="text-align:center; margin-top:12px;">' + chartSvg + '</div>' +
     '</div>';
