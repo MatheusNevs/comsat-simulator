@@ -37,39 +37,39 @@ Criar a estrutura de arquivos, instalar dependências e ter o app abrindo no bro
 
 ---
 
-### ⬜ Etapa 3 — Link Budget Downlink
+### ✅ Etapa 3 — Link Budget Downlink
 - Calcular a distância real de visada (geometria esférica).
 - Calcular EIRP, FSPL, Perdas, Potência Recebida, C/N, Margem.
-- Exibir tabela e gráfico Waterfall.
-- Colorir a linha de enlace no globo conforme a margem.
+- Exibir tabela e detalhamento em tempo real.
+- Colorir e calcular dinamicamente os enlaces.
 
-**Status:** Pendente
+**Status:** Concluído
 
 ---
 
-### ⬜ Etapa 4 — Análise de Ruído
+### ✅ Etapa 4 — Análise de Ruído
 - Cascata de ruído via Fórmula de Friis.
 - Calcular G/T e Temperatura do Sistema.
-- Exibir tabela de cascata de componentes.
+- Exibir ruído espectral e cálculo de C/N no canal.
 
-**Status:** Pendente
+**Status:** Concluído
 
 ---
 
-### ⬜ Etapa 5 — Desempenho e BER
+### ✅ Etapa 5 — Desempenho e BER
 - Calcular Eb/N₀ a partir do enlace.
 - Estimar BER para BPSK, QPSK, 8PSK, 16QAM.
-- Gráfico de curvas BER com ponto de operação marcado.
+- Exibir classificação de viabilidade do enlace.
 
-**Status:** Pendente
+**Status:** Concluído
 
 ---
 
-### ⬜ Etapa 6 — Relatório PDF
+### ✅ Etapa 6 — Relatório PDF
 - Gerar um relatório técnico de impressão.
 - Opção para Imprimir / Salvar como PDF nativo do navegador.
 
-**Status:** Pendente
+**Status:** Concluído
 
 ---
 
@@ -93,4 +93,4 @@ comsat/
 
 ---
 
-*Última atualização: 2026-07-01*
+*Última atualização: 2026-07-02*
