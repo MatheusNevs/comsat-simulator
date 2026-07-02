@@ -48,9 +48,9 @@ def _links_json(satellites, stations):
             break
         nearest = min(satellites, key=lambda s: abs(s.longitude_deg - station.longitude_deg))
         links.append({
-            "path": [[station.latitude_deg, station.longitude_deg, 0.0],
-                     [0.0, nearest.longitude_deg, GEO_ALT]],
-            "color": "#00e5ff", "isNadir": False, "isOrbit": False,
+            "path": [[0.0, nearest.longitude_deg, GEO_ALT],
+                     [station.latitude_deg, station.longitude_deg, 0.0]],
+            "color": "#00ff88", "isNadir": False, "isOrbit": False,
             "label": station.name + " -> " + nearest.name
         })
     return json.dumps(links)
@@ -147,13 +147,32 @@ html, body {{ width:100%; height:100%; background:#000011; overflow:hidden; font
 .badge-green {{ background:rgba(166,227,161,0.2); color:#a6e3a1; border:1px solid #a6e3a1; }}
 .badge-yellow {{ background:rgba(249,226,175,0.2); color:#f9e2af; border:1px solid #f9e2af; }}
 .badge-red {{ background:rgba(243,139,168,0.2); color:#f38ba8; border:1px solid #f38ba8; }}
+
+/* ── Estilos de Impressão (Etapa 6 PDF) ── */
+#printTitle {{ display:none; }}
+@media print {{
+  html, body {{ background:#fff !important; color:#000 !important; overflow:visible !important; }}
+  #globeViz, #toggleBtn, #infoPanel, #linkSelectorContainer, .rtabs, #closePanelBtn, #rightPanelHead {{ display:none !important; }}
+  #rightPanel {{ position:static !important; width:100% !important; height:auto !important; box-shadow:none !important; border:none !important; background:#fff !important; color:#000 !important; display:block !important; }}
+  .rtab-body {{ display:block !important; opacity:1 !important; color:#000 !important; background:#fff !important; page-break-after:auto !important; padding:0 !important; margin-bottom:30px !important; }}
+  .res-card {{ border:1px solid #bbb !important; background:#fff !important; color:#000 !important; page-break-inside:avoid !important; box-shadow:none !important; }}
+  .res-label {{ color:#444 !important; }}
+  .res-val {{ color:#000 !important; }}
+  #printTitle {{ display:block !important; text-align:center; margin-bottom:25px; border-bottom:2px solid #333; padding-bottom:10px; }}
+}}
 </style>
 </head>
 <body>
 
 <div id="globeViz"></div>
 
-<!-- ── Legenda de Potência (Aparece dinamicamente ao passar o mouse no satélite) ── -->
+<!-- Título visível apenas na impressão PDF -->
+<div id="printTitle">
+  <h2 style="font-family:'Segoe UI',sans-serif; color:#111; margin-bottom:5px;">COMSAT SIMULATOR - RELATÓRIO TÉCNICO</h2>
+  <p style="font-family:'Segoe UI',sans-serif; color:#555; font-size:11px; text-transform:uppercase; letter-spacing:1px;">Cálculos Consolidados de Balanço de Potência, Ruído e Desempenho de Enlace</p>
+</div>
+
+<!-- ── Legenda de Potência ── -->
 <div id="footprintLegend" style="
   display:none; position:absolute; bottom:20px; left:20px; width:195px;
   background:rgba(6,12,24,0.92); color:#cdd6f4; border-radius:10px;
@@ -310,7 +329,11 @@ var globe = Globe()
   .pathPointLat(function(p) {{ return p[0]; }})
   .pathPointLng(function(p) {{ return p[1]; }})
   .pathPointAlt(function(p) {{ return p[2]; }})
-  .pathColor(function(d) {{ return d.isNadir ? '#ffff00' : (d.isOrbit ? 'rgba(255,210,60,0.85)' : '#00e5ff'); }})
+  .pathColor(function(d) {{
+    if (d.isNadir) return '#ffff00';
+    if (d.isOrbit) return 'rgba(255,210,60,0.85)';
+    return d.color || '#00e5ff'; // Cor calculada baseada na qualidade do link
+  }})
   .pathDashLength(function(d) {{ return d.isOrbit ? 0.03 : (d.isNadir ? 0.015 : 0.08); }})
   .pathDashGap(function(d)    {{ return d.isOrbit ? 0.02  : (d.isNadir ? 0.015 : 0.04); }})
   .pathDashAnimateTime(function(d) {{ return (d.isOrbit || d.isNadir) ? 0 : 2500; }})
@@ -383,6 +406,7 @@ function onSatPatternChange() {{
   }}
 }}
 
+// Ajusta o formulário de ganho do receptor dependendo do modo selecionado
 function onStationGainModeChange() {{
   var mode = document.getElementById('s_gain_mode').value;
   var directField = document.getElementById('s_gain_direct_field');
@@ -489,13 +513,13 @@ function saveSat(e) {{
 function saveStation(e) {{
   e.preventDefault();
   if (!currentStation) return;
-  currentStation.name    = document.getElementById('s_name').value;
-  currentStation.lat     = parseFloat(document.getElementById('s_lat').value);
-  currentStation.lng     = parseFloat(document.getElementById('s_lng').value);
-  currentStation.gain_mode = document.getElementById('s_gain_mode').value;
+  currentStation.name               = document.getElementById('s_name').value;
+  currentStation.lat                = parseFloat(document.getElementById('s_lat').value);
+  currentStation.lng                = parseFloat(document.getElementById('s_lng').value);
+  currentStation.gain_mode          = document.getElementById('s_gain_mode').value;
   
   if (currentStation.gain_mode === 'Valor Direto') {{
-    currentStation.rx_gain = parseFloat(document.getElementById('s_gain').value);
+    currentStation.rx_gain          = parseFloat(document.getElementById('s_gain').value);
   }} else {{
     currentStation.antenna_diameter = parseFloat(document.getElementById('s_diam').value);
     currentStation.antenna_efficiency = parseFloat(document.getElementById('s_eff').value);
@@ -529,9 +553,28 @@ function recalcLinks() {{
     var nearest = SATS.reduce(function(p, c) {{
       return Math.abs(c.lng - st.lng) < Math.abs(p.lng - st.lng) ? c : p;
     }});
+    
+    // CÁLCULO DA POTÊNCIA RECEBIDA PARA COR DO ENLACE NO GLOBO
+    var geo = calcularApontamento(st.lat, st.lng, nearest.lng);
+    var satAnt = obterGanhoRealSat(nearest, geo.offAxis);
+    var ptx_dbw = 10 * Math.log10(nearest.tx_power);
+    var eirp = ptx_dbw - LOSS_TX_LINE + satAnt.gain;
+    var fspl = 20 * Math.log10(geo.distance) + 20 * Math.log10(nearest.frequency) + 92.45;
+    var totalLosses = LOSS_ATM + LOSS_RAIN + LOSS_POINT + LOSS_POL + LOSS_RX_LINE;
+    var prx_dbw = eirp - fspl - totalLosses + st.rx_gain;
+    var prx_dbm = prx_dbw + 30.0;
+    
+    // Cor dinâmica: Verde (ótimo), Amarelo (regular), Vermelho (ruim)
+    var col = '#00ff88'; // > -90 dBm
+    if (prx_dbm < -100.0) {{
+      col = '#ff3333';
+    }} else if (prx_dbm < -90.0) {{
+      col = '#ffcc00';
+    }}
+    
     return {{
-      path: [[st.lat, st.lng, 0.0], [0.0, nearest.lng, {GEO_ALT}]],
-      color: '#00e5ff', isNadir: false, isOrbit: false
+      path: [[0.0, nearest.lng, {GEO_ALT}], [st.lat, st.lng, 0.0]],
+      color: col, isNadir: false, isOrbit: false
     }};
   }}).filter(Boolean);
   return links.concat(ORBIT);
@@ -678,7 +721,170 @@ function calcularBER(ebN0dB, modType) {{
   return 0.0;
 }}
 
-// 5. Executa e renderiza os cálculos na UI
+// 5. Função auxiliar para gerar gráfico de cascata (Waterfall) em HTML
+function gerarWaterfallHtml(ptx_dbw, l_tx, g_tx, fspl, l_other, g_rx, prx_dbw) {{
+  var maxVal = 210.0; // Normalizador da largura das barras
+  
+  function getWidth(val) {{
+    var abs = Math.abs(val);
+    return Math.min(100, (abs / maxVal) * 100).toFixed(1) + '%';
+  }}
+  
+  return '<div class="res-card"><h4>Gráfico de Cascata (Waterfall)</h4>' +
+    '<div style="display:flex; flex-direction:column; gap:9px; margin-top:8px; font-size:11px;">' +
+      // Pt
+      '<div>' +
+        '<div style="display:flex; justify-content:space-between; margin-bottom:2px;">' +
+          '<span style="color:#a6adc8;">1. Potência do Transmissor (Pt)</span>' +
+          '<span class="res-val">' + ptx_dbw.toFixed(1) + ' dBW</span>' +
+        '</div>' +
+        '<div style="background:rgba(255,255,255,0.06); height:6px; border-radius:3px;">' +
+          '<div style="background:#89dceb; width:' + getWidth(ptx_dbw) + '; height:100%; border-radius:3px;"></div>' +
+        '</div>' +
+      '</div>' +
+      // Gt
+      '<div>' +
+        '<div style="display:flex; justify-content:space-between; margin-bottom:2px;">' +
+          '<span style="color:#a6e3a1;">2. Ganho Antena Sat (Gt)</span>' +
+          '<span class="res-val" style="color:#a6e3a1;">+' + g_tx.toFixed(1) + ' dBi</span>' +
+        '</div>' +
+        '<div style="background:rgba(255,255,255,0.06); height:6px; border-radius:3px;">' +
+          '<div style="background:#a6e3a1; width:' + getWidth(g_tx) + '; height:100%; border-radius:3px;"></div>' +
+        '</div>' +
+      '</div>' +
+      // Ltx
+      '<div>' +
+        '<div style="display:flex; justify-content:space-between; margin-bottom:2px;">' +
+          '<span style="color:#f38ba8;">3. Perda Linha Guia Sat (Ltx)</span>' +
+          '<span class="res-val" style="color:#f38ba8;">-' + l_tx.toFixed(1) + ' dB</span>' +
+        '</div>' +
+        '<div style="background:rgba(255,255,255,0.06); height:6px; border-radius:3px;">' +
+          '<div style="background:#f38ba8; width:' + getWidth(l_tx) + '; height:100%; border-radius:3px;"></div>' +
+        '</div>' +
+      '</div>' +
+      // FSPL
+      '<div>' +
+        '<div style="display:flex; justify-content:space-between; margin-bottom:2px;">' +
+          '<span style="color:#f38ba8;">4. Perda por Espaço Livre (FSPL)</span>' +
+          '<span class="res-val" style="color:#f38ba8;">-' + fspl.toFixed(1) + ' dB</span>' +
+        '</div>' +
+        '<div style="background:rgba(255,255,255,0.06); height:6px; border-radius:3px;">' +
+          '<div style="background:#f38ba8; width:' + getWidth(fspl) + '; height:100%; border-radius:3px;"></div>' +
+        '</div>' +
+      '</div>' +
+      // L_other
+      '<div>' +
+        '<div style="display:flex; justify-content:space-between; margin-bottom:2px;">' +
+          '<span style="color:#f38ba8;">5. Outras Perdas (Atmos/Chuva/Apont/Pol/Lrx)</span>' +
+          '<span class="res-val" style="color:#f38ba8;">-' + l_other.toFixed(1) + ' dB</span>' +
+        '</div>' +
+        '<div style="background:rgba(255,255,255,0.06); height:6px; border-radius:3px;">' +
+          '<div style="background:#f38ba8; width:' + getWidth(l_other) + '; height:100%; border-radius:3px;"></div>' +
+        '</div>' +
+      '</div>' +
+      // Grx
+      '<div>' +
+        '<div style="display:flex; justify-content:space-between; margin-bottom:2px;">' +
+          '<span style="color:#a6e3a1;">6. Ganho Antena Receptor (Grx)</span>' +
+          '<span class="res-val" style="color:#a6e3a1;">+' + g_rx.toFixed(1) + ' dBi</span>' +
+        '</div>' +
+        '<div style="background:rgba(255,255,255,0.06); height:6px; border-radius:3px;">' +
+          '<div style="background:#a6e3a1; width:' + getWidth(g_rx) + '; height:100%; border-radius:3px;"></div>' +
+        '</div>' +
+      '</div>' +
+      // Prx
+      '<div style="border-top:1px solid rgba(255,255,255,0.1); padding-top:6px;">' +
+        '<div style="display:flex; justify-content:space-between; margin-bottom:2px;">' +
+          '<span style="color:#f9e2af; font-weight:700;">7. Potência Final Recebida (Prx)</span>' +
+          '<span class="res-val" style="color:#f9e2af;">' + prx_dbw.toFixed(1) + ' dBW</span>' +
+        '</div>' +
+      '</div>' +
+    '</div></div>';
+}}
+
+// 6. Geração de gráfico interativo SVG para curva BER
+function gerarBerChart(activeEbN0, activeBer, activeMod) {{
+  var width = 290;
+  var height = 180;
+  var paddingLeft = 32;
+  var paddingRight = 10;
+  var paddingTop = 12;
+  var paddingBottom = 22;
+  
+  var chartW = width - paddingLeft - paddingRight;
+  var chartH = height - paddingTop - paddingBottom;
+  
+  function getX(db) {{
+    return paddingLeft + (db / 16.0) * chartW;
+  }}
+  
+  function getY(ber) {{
+    var log = ber > 0 ? Math.log10(ber) : -8.0;
+    log = Math.max(-8.0, Math.min(0.0, log));
+    return paddingTop + (log / -8.0) * chartH;
+  }}
+  
+  var svg = '<svg width="' + width + '" height="' + height + '" style="background:rgba(10,20,44,0.45); border:1px solid #1e5f8a; border-radius:8px; margin-top:10px;">';
+  
+  // Linhas de Grade Horizontais (décadas 10^0 a 10^-8)
+  for (var logY = 0; logY >= -8; logY--) {{
+    var y = paddingTop + (logY / -8.0) * chartH;
+    svg += '<line x1="' + paddingLeft + '" y1="' + y + '" x2="' + (width - paddingRight) + '" y2="' + y + '" stroke="rgba(30,95,138,0.15)" stroke-width="1" />';
+    if (logY % 2 === 0) {{
+      svg += '<text x="' + (paddingLeft - 4) + '" y="' + (y + 3) + '" fill="#7a9cc0" font-size="8" text-anchor="end" font-family="monospace">10' + (logY === 0 ? '⁰' : (logY === -2 ? '⁻²' : (logY === -4 ? '⁻⁴' : (logY === -6 ? '⁻⁶' : '⁻⁸')))) + '</text>';
+    }}
+  }}
+  
+  // Linhas de Grade Verticais (Eb/N0 em dB)
+  for (var dbX = 0; dbX <= 16; dbX += 2) {{
+    var x = paddingLeft + (dbX / 16.0) * chartW;
+    svg += '<line x1="' + x + '" y1="' + paddingTop + '" x2="' + x + '" y2="' + (height - paddingBottom) + '" stroke="rgba(30,95,138,0.15)" stroke-width="1" />';
+    svg += '<text x="' + x + '" y="' + (height - paddingBottom + 10) + '" fill="#7a9cc0" font-size="8" text-anchor="middle" font-family="monospace">' + dbX + '</text>';
+  }}
+  
+  // Desenha as curvas de modulação
+  var modulations = ['BPSK', '8PSK', '16QAM'];
+  var colors = {{ 'BPSK': '#89dceb', '8PSK': '#f9e2af', '16QAM': '#a6e3a1' }};
+  
+  modulations.forEach(function(mod) {{
+    var pathD = '';
+    for (var db = 0; db <= 16; db += 0.5) {{
+      var yBer = calcularBER(db, mod === 'BPSK' ? 'BPSK' : mod);
+      var px = getX(db);
+      var py = getY(yBer);
+      if (db === 0) pathD += 'M ' + px + ' ' + py;
+      else pathD += ' L ' + px + ' ' + py;
+    }}
+    var isActive = (activeMod === mod || (activeMod === 'QPSK' && mod === 'BPSK'));
+    var strokeW = isActive ? 2.2 : 0.9;
+    var strokeO = isActive ? 0.95 : 0.35;
+    svg += '<path d="' + pathD + '" fill="none" stroke="' + colors[mod] + '" stroke-width="' + strokeW + '" stroke-opacity="' + strokeO + '" />';
+  }});
+  
+  // Desenha o Ponto de Operação do Link Ativo (blinking red circle)
+  var pxActive = getX(activeEbN0);
+  var pyActive = getY(activeBer);
+  svg += '<circle cx="' + pxActive + '" cy="' + pyActive + '" r="5.5" fill="#f38ba8" stroke="#fff" stroke-width="1.5">';
+  svg += '<animate attributeName="r" values="4.5;6.5;4.5" dur="1.2s" repeatCount="indefinite" />';
+  svg += '</circle>';
+  
+  // Legenda das Modulações
+  svg += '<g transform="translate(' + (paddingLeft + 10) + ', 22)" font-size="7" font-family="sans-serif">';
+  svg += '<rect x="0" y="0" width="8" height="5" fill="#89dceb" fill-opacity="0.8"/>';
+  svg += '<text x="12" y="5" fill="#cdd6f4">BPSK/QPSK</text>';
+  svg += '<rect x="68" y="0" width="8" height="5" fill="#f9e2af" fill-opacity="0.8"/>';
+  svg += '<text x="80" y="5" fill="#cdd6f4">8PSK</text>';
+  svg += '<rect x="114" y="0" width="8" height="5" fill="#a6e3a1" fill-opacity="0.8"/>';
+  svg += '<text x="126" y="5" fill="#cdd6f4">16QAM</text>';
+  svg += '<circle cx="178" cy="2.5" r="2.5" fill="#f38ba8"/>';
+  svg += '<text x="184" y="5" fill="#f38ba8" font-weight="bold">LINK OP</text>';
+  svg += '</g>';
+  
+  svg += '</svg>';
+  return svg;
+}}
+
+// 7. Executa e renderiza os cálculos na UI
 function atualizarAnalise() {{
   var sel = document.getElementById('link_selector');
   if (!sel || !sel.value) {{
@@ -709,7 +915,7 @@ function atualizarAnalise() {{
   // C. FSPL (Free Space Path Loss)
   var fspl = 20 * Math.log10(geo.distance) + 20 * Math.log10(sat.frequency) + 92.45;
   
-  // D. Potência Recebida
+  // D. Potência Recebida e Margem de Link (Target BER 10^-6)
   var totalLosses = LOSS_ATM + LOSS_RAIN + LOSS_POINT + LOSS_POL + LOSS_RX_LINE;
   var prx_dbw = eirp - fspl - totalLosses + st.rx_gain;
   var prx_dbm = prx_dbw + 30.0;
@@ -727,40 +933,78 @@ function atualizarAnalise() {{
   var cn0 = prx_dbw - n0;
   var cn = cn0 - 10 * Math.log10(BW_MHZ * 1e6);
   
-  // G. Modulação e BER
+  // F. Modulação, Eb/N0, Margem e BER
   var ebn0 = cn0 - 10 * Math.log10(RB_MBPS * 1e6);
   var ber = calcularBER(ebn0, MOD_TYPE);
   
+  // Eb/N0 requerido para BER = 10^-6 conforme a modulação
+  var ebn0_req = 10.5; // BPSK/QPSK
+  if (MOD_TYPE === '8PSK') ebn0_req = 14.0;
+  else if (MOD_TYPE === '16QAM') ebn0_req = 14.5;
+  
+  var margem = ebn0 - ebn0_req;
+  var margemBadge = margem >= 0 ? 
+    '<span class="badge badge-green">Margem Positiva (+' + margem.toFixed(2) + ' dB)</span>' :
+    '<span class="badge badge-red">Margem Negativa (' + margem.toFixed(2) + ' dB)</span>';
+  
   // Renderização ── TAB: LINK
+  var waterfallHtml = gerarWaterfallHtml(ptx_dbw, LOSS_TX_LINE, satAnt.gain, fspl, totalLosses, st.rx_gain, prx_dbw);
+  
   var linkHtml = 
     '<div class="res-card"><h4>Geometria & Apontamento</h4>' +
       '<div class="res-row"><span class="res-label">Distancia (Slant Range)</span><span class="res-val">' + geo.distance.toFixed(2) + ' km</span></div>' +
       '<div class="res-row"><span class="res-label">Angulo de Elevacao</span><span class="res-val">' + geo.elevation.toFixed(2) + '&deg;</span></div>' +
       '<div class="res-row"><span class="res-label">Off-Axis da Antena (Sat.)</span><span class="res-val">' + geo.offAxis.toFixed(2) + '&deg;</span></div>' +
     '</div>' +
-    '<div class="res-card"><h4>Potencia & Perdas</h4>' +
-      '<div class="res-row"><span class="res-label">Potencia Transmissor</span><span class="res-val">' + ptx_dbw.toFixed(1) + ' dBW (' + sat.tx_power + 'W)</span></div>' +
-      '<div class="res-row"><span class="res-label">Ganho Antena (c/ Diagrama)</span><span class="res-val">' + satAnt.gain.toFixed(2) + ' dBi (' + satAnt.att.toFixed(1) + ' dB at.)</span></div>' +
-      '<div class="res-row"><span class="res-label">EIRP do Satelite</span><span class="res-val">' + eirp.toFixed(2) + ' dBW</span></div>' +
-      '<div class="res-row"><span class="res-label">FSPL (Perda de Espaco Livre)</span><span class="res-val">' + fspl.toFixed(2) + ' dB</span></div>' +
-      '<div class="res-row"><span class="res-label">Perdas Adicionais (Atmos/Chuva...)</span><span class="res-val">' + totalLosses.toFixed(2) + ' dB</span></div>' +
-    '</div>' +
-    '<div class="res-card"><h4>Nivel de Sinal Recebido</h4>' +
+    waterfallHtml +
+    '<div class="res-card"><h4>Nivel de Sinal Recebido & Margem</h4>' +
       '<div class="res-row"><span class="res-label">Ganho Antena Receptor</span><span class="res-val">' + st.rx_gain.toFixed(2) + ' dBi</span></div>' +
-      '<div class="res-row"><span class="res-label">Potencia Recebida (Prx)</span><span class="res-val">' + prx_dbw.toFixed(2) + ' dBW</span></div>' +
       '<div class="res-row"><span class="res-label">Potencia Recebida (Prx)</span><span class="res-val" style="color:#a6e3a1;">' + prx_dbm.toFixed(2) + ' dBm</span></div>' +
+      '<div style="text-align:center; margin-top:10px;">' + margemBadge + '</div>' +
     '</div>';
   document.getElementById('tab-link').innerHTML = linkHtml;
   
-  // Renderização ── TAB: RUIDO
+  // Contribuições individuais dos componentes na cascata de ruído
+  var c_ant = st.temp_antenna;
+  var c_lna = st.temp_lna;
+  var c_other = t_eff - c_lna;
+  
+  // Renderização ── TAB: RUIDO (Com Tabela de Cascata de Componentes)
   var noiseHtml = 
-    '<div class="res-card"><h4>Cascata de Ruido do Receptor</h4>' +
-      '<div class="res-row"><span class="res-label">Temp. Ruido da Antena</span><span class="res-val">' + st.temp_antenna.toFixed(1) + ' K</span></div>' +
-      '<div class="res-row"><span class="res-label">Temp. Ruido do LNA</span><span class="res-val">' + st.temp_lna.toFixed(1) + ' K</span></div>' +
-      '<div class="res-row"><span class="res-label">Temp. Receptor Efetiva</span><span class="res-val">' + t_eff.toFixed(1) + ' K</span></div>' +
+    '<div class="res-card"><h4>Temperatura de Ruido do Sistema (Tsys)</h4>' +
       '<div class="res-row"><span class="res-label">Temp. Ruido Sistema (Tsys)</span><span class="res-val" style="color:#f9e2af;">' + t_sys.toFixed(1) + ' K</span></div>' +
+      '<table style="width:100%; border-collapse:collapse; margin-top:10px; font-size:11px; text-align:left;">' +
+        '<thead>' +
+          '<tr style="border-bottom:1px solid rgba(137,220,235,0.3); color:#89dceb; font-weight:bold;">' +
+            '<th style="padding:4px 0;">Estagio</th>' +
+            '<th style="padding:4px 0; text-align:right;">Temp. (K)</th>' +
+            '<th style="padding:4px 0; text-align:right;">Ganho (dB)</th>' +
+            '<th style="padding:4px 0; text-align:right;">Contrib. (K)</th>' +
+          '</tr>' +
+        '</thead>' +
+        '<tbody>' +
+          '<tr style="border-bottom:1px solid rgba(255,255,255,0.05);">' +
+            '<td style="padding:4px 0;">Antena</td>' +
+            '<td style="padding:4px 0; text-align:right;">' + st.temp_antenna.toFixed(1) + '</td>' +
+            '<td style="padding:4px 0; text-align:right;">-</td>' +
+            '<td style="padding:4px 0; text-align:right;">' + c_ant.toFixed(1) + '</td>' +
+          '</tr>' +
+          '<tr style="border-bottom:1px solid rgba(255,255,255,0.05);">' +
+            '<td style="padding:4px 0;">LNA</td>' +
+            '<td style="padding:4px 0; text-align:right;">' + st.temp_lna.toFixed(1) + '</td>' +
+            '<td style="padding:4px 0; text-align:right;">' + st.gain_lna.toFixed(1) + '</td>' +
+            '<td style="padding:4px 0; text-align:right;">' + c_lna.toFixed(1) + '</td>' +
+          '</tr>' +
+          '<tr>' +
+            '<td style="padding:4px 0;">Rec/Mixer</td>' +
+            '<td style="padding:4px 0; text-align:right;">' + (t_rec_k + st.temp_down).toFixed(1) + '</td>' +
+            '<td style="padding:4px 0; text-align:right;">-</td>' +
+            '<td style="padding:4px 0; text-align:right;">' + c_other.toFixed(3) + '</td>' +
+          '</tr>' +
+        '</tbody>' +
+      '</table>' +
     '</div>' +
-    '<div class="res-card"><h4>Qualidade e Densidades</h4>' +
+    '<div class="res-card"><h4>Figura de Merito & Densidades</h4>' +
       '<div class="res-row"><span class="res-label">Figura de Merito G/T</span><span class="res-val">' + gt.toFixed(2) + ' dB/K</span></div>' +
       '<div class="res-row"><span class="res-label">Densidade de Ruido N0</span><span class="res-val">' + n0.toFixed(1) + ' dBW/Hz</span></div>' +
       '<div class="res-row"><span class="res-label">Relacao C/N0</span><span class="res-val" style="color:#89dceb;">' + cn0.toFixed(2) + ' dB-Hz</span></div>' +
@@ -776,6 +1020,8 @@ function atualizarAnalise() {{
   var berBadge = ber < 1e-6 ? '<span class="badge badge-green">Excelente (BER < 10⁻⁶)</span>' :
                  (ber <= 1e-3 ? '<span class="badge badge-yellow">Limiar (10⁻⁶ a 10⁻³)</span>' :
                                '<span class="badge badge-red">Inviavel (BER > 10⁻³)</span>');
+                               
+  var chartSvg = gerarBerChart(ebn0, ber, MOD_TYPE);
                                
   var perfHtml = 
     '<div class="res-card"><h4>Configuracoes de Transmissao</h4>' +
@@ -793,6 +1039,7 @@ function atualizarAnalise() {{
       '<div class="res-row"><span class="res-label">Relacao Eb/N0 calculada</span><span class="res-val" style="color:#a6e3a1;">' + ebn0.toFixed(2) + ' dB</span></div>' +
       '<div class="res-row"><span class="res-label">Bit Error Rate (BER)</span><span class="res-val" style="color:#f38ba8;">' + ber.toExponential(3) + '</span></div>' +
       '<div style="text-align:center; margin-top:10px;">' + berBadge + '</div>' +
+      '<div style="text-align:center; margin-top:12px;">' + chartSvg + '</div>' +
     '</div>';
   document.getElementById('tab-perf').innerHTML = perfHtml;
   

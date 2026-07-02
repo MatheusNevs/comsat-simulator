@@ -28,10 +28,10 @@ Criar a estrutura de arquivos, instalar dependências e ter o app abrindo no bro
 ---
 
 ### ✅ Etapa 2 — Globo + Satélite GEO
-- Renderizar o globo 3D no Plotly.
-- Posicionar um satélite GEO (ponto luminoso na órbita).
-- Posicionar a estação terrena (marcador na superfície).
-- Desenhar a linha de enlace entre os dois.
+- Renderizar o globo 3D no Three.js/Globe.gl.
+- Posicionar um satélite GEO (ponto luminoso estável e discreto na órbita, sem linhas de haste longas).
+- Posicionar a estação terrena (marcador de círculo na superfície).
+- Desenhar a linha de enlace entre os dois (com animação orientada no sentido físico do Downlink, do satélite para a estação terrena).
 
 **Status:** Concluído
 
@@ -39,9 +39,11 @@ Criar a estrutura de arquivos, instalar dependências e ter o app abrindo no bro
 
 ### ✅ Etapa 3 — Link Budget Downlink
 - Calcular a distância real de visada (geometria esférica).
-- Calcular EIRP, FSPL, Perdas, Potência Recebida, C/N, Margem.
+- Calcular EIRP, FSPL, Perdas, Potência Recebida, C/N.
+- Calcular a **Margem de Link** (com base em um limiar requerido para BER = 10⁻⁶).
 - Exibir tabela e detalhamento em tempo real.
-- Colorir e calcular dinamicamente os enlaces.
+- Colorir e calcular dinamicamente os enlaces no globo (Verde = Ótimo, Amarelo = Regular, Vermelho = Crítico).
+- Exibir um **Gráfico de Cascata (Waterfall)** estilizado via CSS mostrando as etapas de ganhos/perdas.
 
 **Status:** Concluído
 
@@ -49,8 +51,9 @@ Criar a estrutura de arquivos, instalar dependências e ter o app abrindo no bro
 
 ### ✅ Etapa 4 — Análise de Ruído
 - Cascata de ruído via Fórmula de Friis.
-- Calcular G/T e Temperatura do Sistema.
+- Calcular G/T e Temperatura do Sistema (Tsys).
 - Exibir ruído espectral e cálculo de C/N no canal.
+- Exibir a **Tabela de Cascata de Componentes** (Antena, LNA e Receptor/Mixer) detalhando a contribuição individual de ruído de cada estágio.
 
 **Status:** Concluído
 
@@ -60,6 +63,7 @@ Criar a estrutura de arquivos, instalar dependências e ter o app abrindo no bro
 - Calcular Eb/N₀ a partir do enlace.
 - Estimar BER para BPSK, QPSK, 8PSK, 16QAM.
 - Exibir classificação de viabilidade do enlace.
+- Exibir o **Gráfico de Curvas de BER (SVG)** mostrando as modulações BPSK/QPSK, 8PSK e 16QAM com o ponto de operação ativo (LINK OP) se deslocando e pulsando em tempo real.
 
 **Status:** Concluído
 
@@ -68,6 +72,7 @@ Criar a estrutura de arquivos, instalar dependências e ter o app abrindo no bro
 ### ✅ Etapa 6 — Relatório PDF
 - Gerar um relatório técnico de impressão.
 - Opção para Imprimir / Salvar como PDF nativo do navegador.
+- Incluir folha de estilo dedicada de impressão (`@media print`) para gerar um layout de PDF de engenharia limpo (fundo branco, ocultando elementos de interface como o globo 3D e botões de navegação).
 
 **Status:** Concluído
 
