@@ -153,6 +153,36 @@ html, body {{ width:100%; height:100%; background:#000011; overflow:hidden; font
 
 <div id="globeViz"></div>
 
+<!-- ── Legenda de Potência (Aparece dinamicamente ao passar o mouse no satélite) ── -->
+<div id="footprintLegend" style="
+  display:none; position:absolute; bottom:20px; left:20px; width:195px;
+  background:rgba(6,12,24,0.92); color:#cdd6f4; border-radius:10px;
+  border:1px solid #1e5f8a; padding:10px 12px; font-family:'Segoe UI',system-ui,sans-serif;
+  box-shadow:0 4px 20px rgba(0,180,255,0.18); z-index:200; pointer-events:none;
+">
+  <div style="font-size:10.5px; font-weight:700; color:#89dceb; margin-bottom:8px; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid rgba(30,95,138,0.4); padding-bottom:3px;">
+    📶 Potencia do Sinal
+  </div>
+  <div style="display:flex; flex-direction:column; gap:6px; font-size:11px;">
+    <div style="display:flex; align-items:center; gap:8px;">
+      <div style="width:14px; height:14px; border-radius:3px; background:rgba(255, 0, 100, 0.6); border:1px solid rgba(255,0,100,0.8);"></div>
+      <span>Pico (0 a -3 dB)</span>
+    </div>
+    <div style="display:flex; align-items:center; gap:8px;">
+      <div style="width:14px; height:14px; border-radius:3px; background:rgba(255, 160, 0, 0.5); border:1px solid rgba(255,160,0,0.7);"></div>
+      <span>Forte (-3 a -10 dB)</span>
+    </div>
+    <div style="display:flex; align-items:center; gap:8px;">
+      <div style="width:14px; height:14px; border-radius:3px; background:rgba(0, 255, 180, 0.4); border:1px solid rgba(0,255,180,0.6);"></div>
+      <span>Medio (-10 a -20 dB)</span>
+    </div>
+    <div style="display:flex; align-items:center; gap:8px;">
+      <div style="width:14px; height:14px; border-radius:3px; background:rgba(0, 100, 255, 0.3); border:1px solid rgba(0,100,255,0.5);"></div>
+      <span>Fraco (-20 a -30 dB)</span>
+    </div>
+  </div>
+</div>
+
 <div id="infoPanel">
   <div id="infoPanelHead">
     <h3 id="infoTitle">Info</h3>
@@ -244,9 +274,13 @@ var globe = Globe()
   .pointsData(STNS)
   .pointLat('lat')
   .pointLng('lng')
-  .pointAltitude(0)
-  .pointRadius(0.40)
-  .pointColor(function() {{ return '#00ff88'; }})
+  .pointAltitude('alt')
+  .pointRadius(function(d) {{
+    return d.kind === 'footprint' ? d.radius : 0.40;
+  }})
+  .pointColor(function(d) {{
+    return d.kind === 'footprint' ? d.color : '#00ff88';
+  }})
   .pointLabel('name')
 
   // Efeito radar nas estações
@@ -289,17 +323,30 @@ globe.controls().autoRotate = true;
 globe.controls().autoRotateSpeed = 0.2;
 globe.pointOfView({{ altitude: 2.5 }});
 
-// ── Hover no satélite: exibe linha nadir dinamicamente ──
+// ── Hover no satélite: exibe linha nadir + gradiente de potência + legenda ──
 globe.onLabelHover(function(d) {{
   if (d && d.kind === 'satellite') {{
     globe.controls().autoRotate = false;
+    
+    // 1. Linha Nadir
     globe.pathsData(ALL_PATHS.concat([{{
       path: [[d.lat, d.lng, d.alt], [d.lat, d.lng, 0]],
       isNadir: true, isOrbit: false
     }}]));
+    
+    // 2. Pegada de Sinal (Footprint) com gradiente na superfície terrestre
+    var footprint = gerarFootprint(d);
+    globe.pointsData(STNS.concat(footprint));
+    
+    // 3. Exibe legenda flutuante
+    document.getElementById('footprintLegend').style.display = 'block';
   }} else {{
     globe.controls().autoRotate = !!(d === null || d === undefined);
     globe.pathsData(ALL_PATHS);
+    
+    // Restaura pontos padrão (somente estações) and esconde legenda
+    globe.pointsData(STNS);
+    document.getElementById('footprintLegend').style.display = 'none';
   }}
 }});
 
@@ -310,7 +357,9 @@ globe.onLabelClick(function(d) {{
 
 // ── Click na estação terrena ──
 globe.onPointClick(function(point) {{
-  showStationPanel(point);
+  if (point && point.kind === 'station') {{
+    showStationPanel(point);
+  }}
 }});
 
 // ── Painéis de edição ──
@@ -440,13 +489,13 @@ function saveSat(e) {{
 function saveStation(e) {{
   e.preventDefault();
   if (!currentStation) return;
-  currentStation.name               = document.getElementById('s_name').value;
-  currentStation.lat                = parseFloat(document.getElementById('s_lat').value);
-  currentStation.lng                = parseFloat(document.getElementById('s_lng').value);
-  currentStation.gain_mode          = document.getElementById('s_gain_mode').value;
+  currentStation.name    = document.getElementById('s_name').value;
+  currentStation.lat     = parseFloat(document.getElementById('s_lat').value);
+  currentStation.lng     = parseFloat(document.getElementById('s_lng').value);
+  currentStation.gain_mode = document.getElementById('s_gain_mode').value;
   
   if (currentStation.gain_mode === 'Valor Direto') {{
-    currentStation.rx_gain          = parseFloat(document.getElementById('s_gain').value);
+    currentStation.rx_gain = parseFloat(document.getElementById('s_gain').value);
   }} else {{
     currentStation.antenna_diameter = parseFloat(document.getElementById('s_diam').value);
     currentStation.antenna_efficiency = parseFloat(document.getElementById('s_eff').value);
@@ -548,7 +597,67 @@ function obterGanhoRealSat(sat, offAxisAngle) {{
   return {{ gain: peak, att: 0.0 }};
 }}
 
-// 3. Função complementar de erro (Chebyshev) para BER
+// 3. Geração de pegada de sinal na superfície terrestre
+function gerarFootprint(sat) {{
+  var points = [];
+  var lonSat = sat.lng;
+  
+  // Define o tamanho da abrangência com base no HPBW
+  var span = 45.0; // Padrão largo
+  if (sat.pattern_type === 'Modelo Parabólico') {{
+    span = Math.min(65.0, 9.0 * (sat.pattern_hpbw || 2.0));
+  }} else if (sat.pattern_type === 'Isotrópica') {{
+    span = 70.0;
+  }}
+  
+  // Subdivisões do grid
+  var steps = 14; 
+  var stepSize = (2 * span) / steps;
+  
+  for (var i = 0; i <= steps; i++) {{
+    var lat = -span + i * stepSize;
+    for (var j = 0; j <= steps; j++) {{
+      var lon = lonSat - span + j * stepSize;
+      
+      if (lat < -85 || lat > 85) continue;
+      
+      var geo = calcularApontamento(lat, lon, lonSat);
+      
+      // Apenas pontos visíveis
+      if (geo.elevation < 0) continue;
+      
+      var satAnt = obterGanhoRealSat(sat, geo.offAxis);
+      var att = satAnt.att; // Atenuação em dB (negativo)
+      
+      // Mapeamento de cor e transparência simulando calor/potência do sinal
+      var color = 'rgba(0,0,0,0)';
+      if (att >= -3.0) {{
+        color = 'rgba(255, 0, 100, 0.40)'; // Pico: Magenta/Vermelho
+      }} else if (att >= -10.0) {{
+        color = 'rgba(255, 160, 0, 0.30)'; // Forte: Amarelo
+      }} else if (att >= -20.0) {{
+        color = 'rgba(0, 255, 180, 0.20)'; // Médio: Verde/Ciano
+      }} else if (att >= -30.0) {{
+        color = 'rgba(0, 100, 255, 0.10)'; // Fraco: Azul
+      }} else {{
+        continue; // Muito fraco
+      }}
+      
+      points.push({{
+        lat: lat,
+        lng: lon,
+        alt: 0.0,
+        kind: 'footprint',
+        color: color,
+        radius: stepSize * 0.70, // Tamanho que sobrepõe ligeiramente as bordas
+        name: 'Ponto Footprint | Atenuacao: ' + att.toFixed(1) + ' dB (Ganho: ' + satAnt.gain.toFixed(1) + ' dBi)'
+      }});
+    }}
+  }}
+  return points;
+}}
+
+// 4. Função complementar de erro (Chebyshev) para BER
 function erfc(x) {{
   var t = 1.0 / (1.0 + 0.5 * Math.abs(x));
   var ans = t * Math.exp(-x*x - 1.26551223 + t * (1.00002368 + t * (0.37409196 + t * (0.09678418 +
@@ -569,7 +678,7 @@ function calcularBER(ebN0dB, modType) {{
   return 0.0;
 }}
 
-// 4. Executa e renderiza os cálculos na UI
+// 5. Executa e renderiza os cálculos na UI
 function atualizarAnalise() {{
   var sel = document.getElementById('link_selector');
   if (!sel || !sel.value) {{
@@ -618,7 +727,7 @@ function atualizarAnalise() {{
   var cn0 = prx_dbw - n0;
   var cn = cn0 - 10 * Math.log10(BW_MHZ * 1e6);
   
-  // F. Modulação e BER
+  // G. Modulação e BER
   var ebn0 = cn0 - 10 * Math.log10(RB_MBPS * 1e6);
   var ber = calcularBER(ebn0, MOD_TYPE);
   
