@@ -146,8 +146,6 @@ html, body {{ width:100%; height:100%; background:#000011; overflow:hidden; font
   <div id="tab-pdf"   class="rtab-body"><p class="placeholder">Gere um relatorio PDF do cenario.</p></div>
 </div>
 
-<!-- Three.js na mesma versão usada pelo globe.gl internamente (~0.163) -->
-<script src="https://cdn.jsdelivr.net/npm/three@0.163.0/build/three.min.js"></script>
 <script src="https://unpkg.com/globe.gl/dist/globe.gl.min.js"></script>
 <script>
 var SATS  = {sats_j};
@@ -178,28 +176,6 @@ function switchTab(el, name) {{
   document.getElementById('tab-' + name).classList.add('active');
 }}
 
-// ── Cria um dot 3D com glow para representar o satélite ──
-// Representação pequena e verde sem haste (stem) e com área invisível maior de clique
-function makeSatDot() {{
-  var group = new THREE.Group();
-
-  // Núcleo verde pequeno
-  var core = new THREE.Mesh(
-    new THREE.SphereGeometry(1.8, 16, 16),
-    new THREE.MeshBasicMaterial({{ color: 0x00ff88 }})
-  );
-  group.add(core);
-
-  // Esfera de colisão invisível maior para facilitar cliques/hover
-  var collider = new THREE.Mesh(
-    new THREE.SphereGeometry(12, 8, 8),
-    new THREE.MeshBasicMaterial({{ color: 0x00ff88, transparent: true, opacity: 0.0, depthWrite: false }})
-  );
-  group.add(collider);
-
-  return group;
-}}
-
 // ── Globe ──
 var globe = Globe()
   (document.getElementById('globeViz'))
@@ -209,14 +185,6 @@ var globe = Globe()
   .showAtmosphere(true)
   .atmosphereColor('#4090c0')
   .atmosphereAltitude(0.20)
-
-  // ── SATÉLITES: objectsData → Three.js sphere sem haste ──
-  // onObjectHover/onObjectClick recebem o DATA ITEM (não o objeto Three.js)
-  .objectsData(SATS)
-  .objectLat('lat')
-  .objectLng('lng')
-  .objectAltitude('alt')          // 0.6 = altitude GEO real, sem stem
-  .objectThreeObject(makeSatDot)  // retorna Group com esfera verde pequena e collider
 
   // ── ESTAÇÕES: pointsData na superfície (alt=0 → sem haste) ──
   .pointsData(STNS)
@@ -236,15 +204,17 @@ var globe = Globe()
   .ringPropagationSpeed(3)
   .ringRepeatPeriod(2200)
 
-  // Labels dos satélites (flutuam acima do dot)
+  // ── SATÉLITES: labelsData → Texto com um ponto bidimensional verde pequeno ──
+  // 100% estável e compatível nativamente sem precisar carregar Three.js externo
   .labelsData(SATS)
   .labelLat('lat')
   .labelLng('lng')
-  .labelAltitude(function(d) {{ return d.alt + 0.08; }})
+  .labelAltitude('alt')          // Altitude GEO orbital (0.6)
   .labelText('name')
   .labelSize(1.2)
-  .labelDotRadius(0)
-  .labelColor(function() {{ return 'rgba(255, 215, 80, 0.9)'; }})
+  .labelDotRadius(0.6)           // Bolinha verde bidimensional bem pequenininha, mas perfeitamente visível
+  .labelDotOrientation('bottom') // Ponto verde posicionado abaixo do texto
+  .labelColor(function() {{ return '#00ff88'; }}) // Nome e bolinha verdes
   .labelResolution(4)
 
   // Links + anel orbital GEO
@@ -266,8 +236,8 @@ globe.controls().autoRotate = true;
 globe.controls().autoRotateSpeed = 0.2;
 globe.pointOfView({{ altitude: 2.5 }});
 
-// ── Hover no satélite: recebe DATA ITEM diretamente (d.kind, d.lat, etc.) ──
-globe.onObjectHover(function(d) {{
+// ── Hover no satélite: exibe linha nadir dinamicamente ──
+globe.onLabelHover(function(d) {{
   if (d && d.kind === 'satellite') {{
     globe.controls().autoRotate = false;
     globe.pathsData(ALL_PATHS.concat([{{
@@ -280,8 +250,8 @@ globe.onObjectHover(function(d) {{
   }}
 }});
 
-// ── Click no satélite: recebe DATA ITEM diretamente ──
-globe.onObjectClick(function(d) {{
+// ── Click no satélite: abre painel de edição ──
+globe.onLabelClick(function(d) {{
   if (d) showSatPanel(d);
 }});
 
@@ -335,7 +305,6 @@ function saveSat(e) {{
   currentSat.frequency = parseFloat(document.getElementById('f_freq').value);
   currentSat.tx_power  = parseFloat(document.getElementById('f_power').value);
   currentSat.tx_gain   = parseFloat(document.getElementById('f_gain').value);
-  globe.objectsData(SATS.slice());
   globe.labelsData(SATS.slice());
   ALL_PATHS = recalcLinks();
   globe.pathsData(ALL_PATHS);
