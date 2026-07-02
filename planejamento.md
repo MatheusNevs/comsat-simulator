@@ -65,17 +65,11 @@ Criar a estrutura de arquivos, instalar dependências e ter o app abrindo no bro
 
 ---
 
-## Features Adicionais (após MVP)
+### ⬜ Etapa 6 — Relatório PDF
+- Gerar um relatório técnico de impressão.
+- Opção para Imprimir / Salvar como PDF nativo do navegador.
 
-Cada item abaixo é independente — pode ser adicionado sem tocar no resto:
-
-- [ ] **Uplink** (Estação → Satélite): segunda direção do enlace, com parâmetros próprios.
-- [ ] **Footprint**: calcular e desenhar a cobertura do feixe no globo, com gradiente de cor.
-- [ ] **Satélites LEO com animação**: movimento ao longo da órbita + footprint deslizando.
-- [ ] **Atmosfera e Chuva (ITU-R P.618)**: atenuação por chuva com zonas climáticas.
-- [ ] **Múltiplos satélites e estações**: catálogo, seleção de par para análise.
-- [ ] **Relatório PDF**: exportar tudo (tabelas + gráficos + imagem do globo).
-- [ ] **Disponibilidade do enlace**: X% do tempo com atenuação de chuva configurada.
+**Status:** Pendente
 
 ---
 
