@@ -74,6 +74,7 @@ def render_globe_html(satellites, stations, height=900):
 <html>
 <head>
 <meta charset="utf-8">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; }}
 html, body {{ width:100%; height:100%; background:#000011; overflow:hidden; font-family:'Segoe UI',system-ui,sans-serif; }}
@@ -1113,14 +1114,355 @@ function atualizarAnalise() {{
   var pdfHtml = 
     '<div class="res-card" style="text-align:center; padding:15px 12px;">' +
       '<h4>Relatório PDF Customizado</h4>' +
-      '<p style="font-size:11px; margin-bottom:12px; line-height:1.4; color:#a6adc8;">Você pode baixar um PDF técnico completo contendo a tabela de Friis por componentes e o gráfico vetorial das curvas de BER diretamente no <b>painel esquerdo do simulador</b>.</p>' +
+      '<p style="font-size:11px; margin-bottom:12px; line-height:1.4; color:#a6adc8;">Clique no botão abaixo para gerar e baixar o relatório técnico consolidado de alta qualidade em PDF (com tabelas de perdas, cascata de ruído e o gráfico vetorial de curvas de BER).</p>' +
+      '<button class="save-btn" onclick="gerarPDFCliente()">💾 Baixar Relatório PDF</button>' +
     '</div>' +
     '<div class="res-card" style="text-align:center; padding:15px 12px;">' +
       '<h4>Impressão Rápida</h4>' +
-      '<p style="font-size:11px; margin-bottom:12px; line-height:1.4; color:#a6adc8;">Ou clique abaixo para imprimir o relatório técnico limpo formatado para A4 pelo navegador.</p>' +
-      '<button class="save-btn" onclick="window.print()">&#128196; Imprimir Tela</button>' +
+      '<p style="font-size:11px; margin-bottom:12px; line-height:1.4; color:#a6adc8;">Ou imprima diretamente a visualização limpa A4 formatada pelo navegador.</p>' +
+      '<button class="save-btn" style="background:rgba(50,70,90,0.5);" onclick="window.print()">&#128196; Imprimir Tela</button>' +
     '</div>';
   document.getElementById('tab-pdf').innerHTML = pdfHtml;
+}}
+
+function changeBW(val) {{
+  BW_MHZ = parseFloat(val) || 36.0;
+  atualizarAnalise();
+}}
+
+function changeRB(val) {{
+  RB_MBPS = parseFloat(val) || 50.0;
+  atualizarAnalise();
+}}
+
+function changeMod(val) {{
+  MOD_TYPE = val;
+  atualizarAnalise();
+}}
+
+function gerarPDFCliente() {{
+  const {{ jsPDF }} = window.jspdf;
+  const doc = new jsPDF();
+  
+  // Obter link ativo
+  var sel = document.getElementById('link_selector');
+  if (!sel || !sel.value) return;
+  var ids = sel.value.split('-');
+  var stIdx = parseInt(ids[0]);
+  var satIdx = parseInt(ids[1]);
+  var st = STNS[stIdx];
+  var sat = SATS[satIdx];
+  
+  // Realizar contas exatas
+  var geo = calcularApontamento(st.lat, st.lng, sat.lng);
+  var satAnt = obterGanhoRealSat(sat, geo.offAxis);
+  var ptx_dbw = 10 * Math.log10(sat.tx_power);
+  var eirp = ptx_dbw - LOSS_TX_LINE + satAnt.gain;
+  var fspl = 20 * Math.log10(geo.distance) + 20 * Math.log10(sat.frequency) + 92.45;
+  var totalLosses = LOSS_ATM + LOSS_RAIN + LOSS_POINT + LOSS_POL + LOSS_RX_LINE;
+  var prx_dbw = eirp - fspl - totalLosses + st.rx_gain;
+  var prx_dbm = prx_dbw + 30.0;
+  
+  var g_lna_lin = Math.pow(10, (st.gain_lna || 50.0) / 10.0);
+  var f_rec = Math.pow(10, (st.nf_rec || 8.0) / 10.0);
+  var t_rec_k = 290.0 * (f_rec - 1.0);
+  var t_eff = (st.temp_lna || 80.0) + ((st.temp_down || 290.0) / g_lna_lin) + (t_rec_k / g_lna_lin);
+  var t_sys = (st.temp_antenna || 50.0) + t_eff;
+  
+  var gt = st.rx_gain - 10 * Math.log10(t_sys);
+  var K_DB = -228.6;
+  var n0 = K_DB + 10 * Math.log10(t_sys);
+  var cn0 = prx_dbw - n0;
+  var cn = cn0 - 10 * Math.log10(BW_MHZ * 1e6);
+  
+  var ebn0 = cn0 - 10 * Math.log10(RB_MBPS * 1e6);
+  var ber = calcularBER(ebn0, MOD_TYPE);
+  
+  var ebn0_req = 10.5;
+  if (MOD_TYPE === '8PSK') ebn0_req = 14.0;
+  else if (MOD_TYPE === '16QAM') ebn0_req = 14.5;
+  var margem = ebn0 - ebn0_req;
+  
+  // ── HEADER ──
+  doc.setFillColor(14, 28, 56);
+  doc.rect(0, 0, 210, 28, "F");
+  
+  doc.setTextColor(137, 220, 235);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(14);
+  doc.text("COMSAT SIMULATOR - RELATORIO TECNICO DE ENLACE", 105, 12, {{ align: "center" }});
+  
+  doc.setTextColor(200, 200, 200);
+  doc.setFont("helvetica", "italic");
+  doc.setFontSize(9);
+  doc.text("Calculos de Balanco de Potencia, Ruido e Desempenho de Downlink", 105, 20, {{ align: "center" }});
+  
+  // Helper para seções
+  let currentY = 38;
+  function drawSectionHeader(title) {{
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(14, 28, 56);
+    doc.text(title, 15, currentY);
+    doc.setDrawColor(14, 28, 56);
+    doc.setLineWidth(0.3);
+    doc.line(15, currentY + 1.5, 195, currentY + 1.5);
+    currentY += 8;
+  }}
+  
+  function drawKeyValueRow(items) {{
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    let startX = 15;
+    let step = 60;
+    
+    items.forEach(function(item) {{
+      // Key
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(100, 100, 100);
+      doc.text(item[0] + ": ", startX, currentY);
+      let offset = doc.getTextWidth(item[0] + ": ");
+      
+      // Val
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(20, 20, 20);
+      doc.text(item[1], startX + offset, currentY);
+      
+      startX += step;
+    }});
+    currentY += 6;
+  }}
+  
+  // ── SEÇÃO 1: INFORMACÕES GERAIS ──
+  drawSectionHeader("1. INFORMACOES GERAIS");
+  drawKeyValueRow([
+    ["Satelite", sat.name],
+    ["Tipo de Orbita", "GEO"],
+    ["Longitude Orbital", sat.lng.toFixed(1) + "°"]
+  ]);
+  drawKeyValueRow([
+    ["Estacao Terrena", st.name],
+    ["Latitude Est.", st.lat.toFixed(4) + "°"],
+    ["Longitude Est.", st.lng.toFixed(4) + "°"]
+  ]);
+  
+  // ── SEÇÃO 2: GEOMETRIA E APONTAMENTO ──
+  currentY += 2;
+  drawSectionHeader("2. GEOMETRIA E APONTAMENTO");
+  drawKeyValueRow([
+    ["Distancia (Slant Range)", geo.distance.toFixed(2) + " km"],
+    ["Angulo de Elevacao", geo.elevation.toFixed(2) + "°"],
+    ["Off-Axis (Apontamento)", geo.offAxis.toFixed(2) + "°"]
+  ]);
+  
+  // ── SEÇÃO 3: BALANÇO DE POTÊNCIA ──
+  currentY += 2;
+  drawSectionHeader("3. BALANCO DE POTENCIA (LINK BUDGET)");
+  drawKeyValueRow([
+    ["Potencia do Transmissor", ptx_dbw.toFixed(1) + " dBW (" + sat.tx_power + "W)"],
+    ["Ganho Antena Sat", satAnt.gain.toFixed(1) + " dBi (" + satAnt.att.toFixed(1) + " dB at.)"],
+    ["EIRP do Satelite", eirp.toFixed(2) + " dBW"]
+  ]);
+  drawKeyValueRow([
+    ["Atenuacao por FSPL", fspl.toFixed(2) + " dB"],
+    ["Outras Perdas", totalLosses.toFixed(2) + " dB"],
+    ["Ganho Antena Receptor", st.rx_gain.toFixed(2) + " dBi"]
+  ]);
+  drawKeyValueRow([
+    ["Potencia Recebida (Prx)", prx_dbm.toFixed(2) + " dBm"],
+    ["Meta de BER", "10^-6"],
+    ["Margem de Link", margem.toFixed(2) + " dB (" + (margem >= 0 ? "Aprovado" : "Falhou") + ")"]
+  ]);
+  
+  // ── SEÇÃO 4: ANÁLISE DE RUÍDO ──
+  currentY += 2;
+  drawSectionHeader("4. ANALISE DE RUIDO E TEMPERATURA");
+  drawKeyValueRow([
+    ["Temp. Ruido Antena", st.temp_antenna.toFixed(1) + " K"],
+    ["Temp. Ef. Receptor", t_eff.toFixed(1) + " K"],
+    ["Temp. do Sistema (Tsys)", t_sys.toFixed(1) + " K"]
+  ]);
+  drawKeyValueRow([
+    ["Figura de Merito G/T", gt.toFixed(2) + " dB/K"],
+    ["Banda do Canal", BW_MHZ.toFixed(1) + " MHz"],
+    ["Relacao C/N no Canal", cn.toFixed(2) + " dB"]
+  ]);
+  
+  // Tabela de Cascata
+  currentY += 2;
+  doc.setFillColor(225, 235, 245);
+  doc.rect(15, currentY, 180, 5, "F");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8);
+  doc.setTextColor(14, 28, 56);
+  doc.text("Estagio Cascata (Friis)", 17, currentY + 3.5);
+  doc.text("Temperatura Estagio (K)", 80, currentY + 3.5);
+  doc.text("Ganho Estagio (dB)", 125, currentY + 3.5);
+  doc.text("Contribuicao para Tsys (K)", 160, currentY + 3.5);
+  
+  var c_ant = st.temp_antenna;
+  var c_lna = st.temp_lna;
+  var c_other = t_eff - c_lna;
+  
+  currentY += 5;
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(20, 20, 20);
+  
+  // Row 1
+  doc.rect(15, currentY, 180, 4.5);
+  doc.text("Antena Receptora", 17, currentY + 3.2);
+  doc.text(st.temp_antenna.toFixed(1), 80, currentY + 3.2);
+  doc.text("-", 125, currentY + 3.2);
+  doc.text(c_ant.toFixed(1), 160, currentY + 3.2);
+  currentY += 4.5;
+  
+  // Row 2
+  doc.rect(15, currentY, 180, 4.5);
+  doc.text("Amplificador LNA", 17, currentY + 3.2);
+  doc.text(st.temp_lna.toFixed(1), 80, currentY + 3.2);
+  doc.text(st.gain_lna.toFixed(1), 125, currentY + 3.2);
+  doc.text(c_lna.toFixed(1), 160, currentY + 3.2);
+  currentY += 4.5;
+  
+  // Row 3
+  doc.rect(15, currentY, 180, 4.5);
+  doc.text("Estagios Seguintes (Rec/Mixer)", 17, currentY + 3.2);
+  doc.text((t_rec_k + st.temp_down).toFixed(1), 80, currentY + 3.2);
+  doc.text("-", 125, currentY + 3.2);
+  doc.text(c_other.toFixed(3), 160, currentY + 3.2);
+  
+  // ── SEÇÃO 5: DESEMPENHO E BER ──
+  currentY += 10;
+  drawSectionHeader("5. DESEMPENHO E CURVAS DE BER");
+  drawKeyValueRow([
+    ["Taxa de Dados (Rb)", RB_MBPS.toFixed(1) + " Mbps"],
+    ["Esquema de Modulacao", MOD_TYPE],
+    ["Eb/N0 Recebido", ebn0.toFixed(2) + " dB"]
+  ]);
+  drawKeyValueRow([
+    ["Eb/N0 Minimo Req.", ebn0_req.toFixed(1) + " dB"],
+    ["BER Estimado", ber.toExponential(2)],
+    ["Status de Qualidade", (margem >= 0 ? "ADEQUADO" : "INADEQUADO")]
+  ]);
+  
+  // Desenhar o gráfico de BER
+  currentY += 2;
+  var chartX = 35;
+  var chartY = currentY;
+  var chartW = 140;
+  var chartH = 65;
+  
+  doc.setFillColor(245, 248, 252);
+  doc.rect(chartX, chartY, chartW, chartH, "F");
+  doc.setDrawColor(30, 95, 138);
+  doc.setLineWidth(0.3);
+  doc.rect(chartX, chartY, chartW, chartH, "D");
+  
+  // Grid Lines Horizontais
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7);
+  doc.setTextColor(80, 80, 80);
+  for (var logY = 0; logY >= -8; logY--) {{
+    var py = chartY + (logY / -8.0) * chartH;
+    doc.setDrawColor(210, 220, 230);
+    doc.line(chartX, py, chartX + chartW, py);
+    var lbl = logY === 0 ? "1" : "10^-" + Math.abs(logY);
+    doc.text(lbl, chartX - 10, py + 1.5);
+  }}
+  
+  // Grid Lines Verticais
+  for (var db = 0; db <= 16; db += 2) {{
+    var px = chartX + (db / 16.0) * chartW;
+    doc.line(px, chartY, px, chartY + chartH);
+    doc.text(db.toString(), px - 1.5, chartY + chartH + 4.0);
+  }}
+  
+  doc.setFont("helvetica", "bold");
+  doc.text("Eb/N0 (dB)", chartX + chartW/2 - 8, chartY + chartH + 8.5);
+  
+  // Função para curva teórica
+  function computeCurveBer(eb_n0_db, mod) {{
+    var eb_n0_lin = Math.pow(10, eb_n0_db / 10.0);
+    if (mod === 'BPSK') {{
+      return 0.5 * erfc(Math.sqrt(eb_n0_lin));
+    }} else if (mod === '8PSK') {{
+      return (1.0 / 3.0) * erfc(Math.sqrt(3.0 * eb_n0_lin) * Math.sin(Math.PI / 8.0));
+    }} else if (mod === '16QAM') {{
+      return 0.375 * erfc(Math.sqrt(0.4 * eb_n0_lin));
+    }}
+    return 0.0;
+  }}
+  
+  var curves = ['BPSK', '8PSK', '16QAM'];
+  var colors = {{
+    'BPSK': [0, 120, 200],
+    '8PSK': [220, 150, 0],
+    '16QAM': [0, 140, 70]
+  }};
+  
+  curves.forEach(function(cMod) {{
+    var isActive = (MOD_TYPE === cMod || (MOD_TYPE === 'QPSK' && cMod === 'BPSK'));
+    doc.setLineWidth(isActive ? 0.7 : 0.25);
+    doc.setDrawColor(colors[cMod][0], colors[cMod][1], colors[cMod][2]);
+    
+    var lastPx = null, lastPy = null;
+    for (var i = 0; i <= 32; i++) {{
+      var db = (i / 32.0) * 16.0;
+      var yBer = computeCurveBer(db, cMod);
+      var px = chartX + (db / 16.0) * chartW;
+      
+      var logBer = yBer > 0 ? Math.log10(yBer) : -8.0;
+      logBer = Math.max(-8.0, Math.min(0.0, logBer));
+      var py = chartY + (logBer / -8.0) * chartH;
+      
+      if (lastPx !== null) {{
+        doc.line(lastPx, lastPy, px, py);
+      }}
+      lastPx = px;
+      lastPy = py;
+    }}
+  }});
+  
+  // Ponto de operação ativo
+  var pxActive = chartX + (ebn0 / 16.0) * chartW;
+  var logBerActive = ber > 0 ? Math.log10(ber) : -8.0;
+  logBerActive = Math.max(-8.0, Math.min(0.0, logBerActive));
+  var pyActive = chartY + (logBerActive / -8.0) * chartH;
+  
+  doc.setFillColor(243, 100, 120);
+  doc.setDrawColor(0, 0, 0);
+  doc.setLineWidth(0.4);
+  doc.circle(pxActive, pyActive, 1.8, "FD");
+  
+  // Legenda
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(6);
+  doc.setTextColor(40, 40, 40);
+  
+  doc.setFillColor(colors['BPSK'][0], colors['BPSK'][1], colors['BPSK'][2]);
+  doc.rect(chartX + 4, chartY + 4, 3, 2, "F");
+  doc.text("BPSK/QPSK", chartX + 8, chartY + 5.8);
+  
+  doc.setFillColor(colors['8PSK'][0], colors['8PSK'][1], colors['8PSK'][2]);
+  doc.rect(chartX + 40, chartY + 4, 3, 2, "F");
+  doc.text("8PSK", chartX + 44, chartY + 5.8);
+  
+  doc.setFillColor(colors['16QAM'][0], colors['16QAM'][1], colors['16QAM'][2]);
+  doc.rect(chartX + 70, chartY + 4, 3, 2, "F");
+  doc.text("16QAM", chartX + 74, chartY + 5.8);
+  
+  doc.setFillColor(243, 100, 120);
+  doc.circle(chartX + 105, chartY + 4.8, 1.0, "F");
+  doc.setFont("helvetica", "bold");
+  doc.text("LINK OP", chartX + 108, chartY + 5.8);
+  
+  // Page number footer
+  doc.setFont("helvetica", "italic");
+  doc.setFontSize(8);
+  doc.setTextColor(128, 128, 128);
+  doc.text("Pagina 1/1", 105, 285, {{ align: "center" }});
+
+  doc.save("ComSat_Relatorio_" + sat.name + "_" + st.name + ".pdf");
 }}
 
 function changeBW(val) {{
