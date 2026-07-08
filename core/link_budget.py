@@ -41,9 +41,66 @@ def calcular_distancia_e_elevacao(lat_st, lon_st, lon_sat, alt_sat_km=GEO_ALTITU
         
     return distancia, elevacao
 
+def obter_coeficientes_chuva(freq_ghz):
+    freqs = [4, 6, 12, 20, 30]
+    a_vals = [0.00075, 0.0028, 0.024, 0.092, 0.24]
+    b_vals = [1.08, 1.12, 1.15, 1.08, 0.98]
+    
+    if freq_ghz <= freqs[0]:
+        return a_vals[0], b_vals[0]
+    if freq_ghz >= freqs[-1]:
+        return a_vals[-1], b_vals[-1]
+    
+    for i in range(len(freqs) - 1):
+        if freqs[i] <= freq_ghz <= freqs[i+1]:
+            t = (freq_ghz - freqs[i]) / (freqs[i+1] - freqs[i])
+            log_a = math.log10(a_vals[i]) + t * (math.log10(a_vals[i+1]) - math.log10(a_vals[i]))
+            a = 10**log_a
+            b = b_vals[i] + t * (b_vals[i+1] - b_vals[i])
+            return a, b
+    return 0.024, 1.15
+
+def calcular_perdas_dinamicas(freq_ghz, elevacao_deg, rain_rate=50.0, rain_prob=0.01, use_atm=True, use_rain=True):
+    elev_rad = math.radians(max(5.0, elevacao_deg))
+    sin_elev = math.sin(elev_rad)
+    
+    loss_atm = 0.0
+    if use_atm:
+        loss_atm = 0.15 / sin_elev
+        loss_atm = min(3.0, loss_atm)
+        
+    loss_rain = 0.0
+    if use_rain:
+        h_s = 1.17
+        h_R = 4.0
+        L_s = (h_R - h_s) / sin_elev
+        L_G = L_s * math.cos(elev_rad)
+        
+        a, b = obter_coeficientes_chuva(freq_ghz)
+        gamma_001 = a * (rain_rate ** b)
+        
+        r_001 = 1.0 / (1.0 + 0.78 * math.sqrt(L_G * gamma_001 / freq_ghz) - 0.38 * (1.0 - math.exp(-2.0 * L_G)))
+        r_001 = max(0.1, min(1.0, r_001))
+        
+        v_001 = 1.0 / (1.0 + math.sqrt(sin_elev) * (31.0 * math.sqrt(L_G * gamma_001) / (freq_ghz * freq_ghz) - 0.45))
+        v_001 = max(0.1, min(1.0, v_001))
+        
+        A_001 = gamma_001 * L_s * r_001 * v_001
+        
+        log_p = math.log(rain_prob)
+        log_a = math.log(A_001) if A_001 > 0 else -10.0
+        exp = 0.655 + 0.033 * log_p - 0.045 * log_a
+        exp = max(0.3, min(0.8, exp))
+        
+        loss_rain = A_001 * (rain_prob / 0.01) ** (-exp)
+        if math.isnan(loss_rain) or loss_rain < 0:
+            loss_rain = 0.0
+            
+    return loss_atm, loss_rain
+
 def calcular_tudo(params):
     """
-    Orquestra os cálculos do Link Budget.
+    Orquestra os cálculos do Link Budget com suporte a atenuação atmosférica e por chuva dinâmica.
     """
     freq_ghz = params.get('frequencia_ghz', 12.0)
     ptx_w = params.get('potencia_tx_w', 100.0)
@@ -54,8 +111,11 @@ def calcular_tudo(params):
     lon_st = params.get('lon_estacao', 0.0)
     lon_sat = params.get('lon_satelite', 0.0)
     
-    perda_atmos = params.get('perda_atmosferica_db', 0.5)
-    perda_chuva = params.get('perda_chuva_db', 1.5)
+    use_atm = params.get('use_atm', True)
+    use_rain = params.get('use_rain', True)
+    rain_rate = params.get('rain_rate', 50.0)
+    rain_prob = params.get('rain_prob', 0.01)
+    
     perda_apont = params.get('perda_apontamento_db', 0.5)
     perda_pol = params.get('perda_polarizacao_db', 0.3)
     perdas_rx = params.get('perdas_linha_rx_db', 0.5)
@@ -76,8 +136,9 @@ def calcular_tudo(params):
     else:
         fspl = 0.0
 
-    # 5. Soma de outras perdas
-    outras_perdas = perda_atmos + perda_chuva + perda_apont + perda_pol + perdas_rx
+    # 5. Perdas dinâmicas por atmosfera e chuva
+    loss_atm, loss_rain = calcular_perdas_dinamicas(freq_ghz, elevacao, rain_rate, rain_prob, use_atm, use_rain)
+    outras_perdas = loss_atm + loss_rain + perda_apont + perda_pol + perdas_rx
 
     # 6. Potência Recebida (dBW)
     pot_recebida_dbw = eirp - fspl - outras_perdas + grx_dbi
@@ -90,5 +151,7 @@ def calcular_tudo(params):
         "fspl": round(fspl, 2),
         "outras_perdas": round(outras_perdas, 2),
         "potencia_recebida_dbw": round(pot_recebida_dbw, 2),
-        "potencia_recebida_dbm": round(pot_recebida_dbm, 2)
+        "potencia_recebida_dbm": round(pot_recebida_dbm, 2),
+        "perda_atmosferica_db": round(loss_atm, 2),
+        "perda_chuva_db": round(loss_rain, 2)
     }

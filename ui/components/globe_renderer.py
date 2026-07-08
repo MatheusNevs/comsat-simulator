@@ -17,7 +17,8 @@ def _satellites_json(satellites):
         "frequency": s.frequency_ghz,
         "pattern_type": s.pattern_type,
         "pattern_hpbw": s.pattern_hpbw,
-        "pattern_data": s.pattern_data
+        "pattern_data": s.pattern_data,
+        "tx_line_loss": s.tx_line_loss_db
     } for i, s in enumerate(satellites)])
 
 
@@ -317,7 +318,111 @@ var LOSS_RAIN = 1.5;
 var LOSS_POINT = 0.5;
 var LOSS_POL = 0.3;
 var LOSS_RX_LINE = 0.5;
-var LOSS_TX_LINE = 1.0;
+
+var USE_LOSS_ATM = true;
+var USE_LOSS_RAIN = true;
+var RAIN_RATE = 50.0;
+var RAIN_PROB = 0.01;
+var ATM_ZENITH = 0.15;
+
+function obterCoeficientesChuvas(f) {{
+  var freqs = [4, 6, 12, 20, 30];
+  var a_vals = [0.00075, 0.0028, 0.024, 0.092, 0.24];
+  var b_vals = [1.08, 1.12, 1.15, 1.08, 0.98];
+  
+  if (f <= freqs[0]) return {{ a: a_vals[0], b: b_vals[0] }};
+  if (f >= freqs[freqs.length - 1]) return {{ a: a_vals[freqs.length - 1], b: b_vals[freqs.length - 1] }};
+  
+  for (var i = 0; i < freqs.length - 1; i++) {{
+    if (f >= freqs[i] && f <= freqs[i+1]) {{
+      var t = (f - freqs[i]) / (freqs[i+1] - freqs[i]);
+      var log_a = Math.log10(a_vals[i]) + t * (Math.log10(a_vals[i+1]) - Math.log10(a_vals[i]));
+      var a = Math.pow(10, log_a);
+      var b = b_vals[i] + t * (b_vals[i+1] - b_vals[i]);
+      return {{ a: a, b: b }};
+    }}
+  }}
+  return {{ a: 0.024, b: 1.15 }};
+}}
+
+function calcularPerdasDinamicas(f, elev_deg, useAtm, useRain) {{
+  var elev_rad = Math.max(5.0, elev_deg) * Math.PI / 180.0;
+  var sin_elev = Math.sin(elev_rad);
+  
+  // 1. Perda Atmosférica Dinâmica (Gaseosa)
+  var lossAtm = 0.0;
+  if (useAtm) {{
+    lossAtm = ATM_ZENITH / sin_elev;
+    lossAtm = Math.min(3.0, lossAtm); // Limite físico para evitar infinito
+  }}
+  
+  // 2. Perda por Chuva Dinâmica (ITU-R P.618 simplificada)
+  var lossRain = 0.0;
+  if (useRain) {{
+    var h_s = 1.17; // Altitude de Brasília (km)
+    var h_R = 4.0;  // Isoterma 0°C + 0.36km
+    
+    var L_s = (h_R - h_s) / sin_elev;
+    var L_G = L_s * Math.cos(elev_rad);
+    
+    // Obter coeficientes a, b da ITU-R P.838
+    var coef = obterCoeficientesChuvas(f);
+    var gamma_001 = coef.a * Math.pow(RAIN_RATE, coef.b);
+    
+    // Fator de redução horizontal r_0.01
+    var r_001 = 1.0 / (1.0 + 0.78 * Math.sqrt(L_G * gamma_001 / f) - 0.38 * (1.0 - Math.exp(-2.0 * L_G)));
+    r_001 = Math.max(0.1, Math.min(1.0, r_001));
+    
+    // Fator de ajuste vertical v_0.01
+    var v_001 = 1.0 / (1.0 + Math.sqrt(sin_elev) * (31.0 * Math.sqrt(L_G * gamma_001) / (f * f) - 0.45));
+    v_001 = Math.max(0.1, Math.min(1.0, v_001));
+    
+    // Atenuação em 0.01%
+    var A_001 = gamma_001 * L_s * r_001 * v_001;
+    
+    // Escalonamento para probabilidade P
+    var log_p = Math.log(RAIN_PROB);
+    var log_a = Math.log(A_001);
+    var exp = 0.655 + 0.033 * log_p - 0.045 * log_a;
+    exp = Math.max(0.3, Math.min(0.8, exp));
+    
+    lossRain = A_001 * Math.pow(RAIN_PROB / 0.01, -exp);
+    if (isNaN(lossRain) || lossRain < 0) lossRain = 0.0;
+  }}
+  
+  return {{
+    atm: lossAtm,
+    rain: lossRain
+  }};
+}}
+
+function toggleLossAtm(val) {{
+  USE_LOSS_ATM = val;
+  ALL_PATHS = recalcLinks();
+  globe.pathsData(ALL_PATHS);
+  atualizarAnalise();
+}}
+
+function toggleLossRain(val) {{
+  USE_LOSS_RAIN = val;
+  ALL_PATHS = recalcLinks();
+  globe.pathsData(ALL_PATHS);
+  atualizarAnalise();
+}}
+
+function changeRainRate(val) {{
+  RAIN_RATE = parseFloat(val) || 50.0;
+  ALL_PATHS = recalcLinks();
+  globe.pathsData(ALL_PATHS);
+  atualizarAnalise();
+}}
+
+function changeRainProb(val) {{
+  RAIN_PROB = parseFloat(val) || 0.01;
+  ALL_PATHS = recalcLinks();
+  globe.pathsData(ALL_PATHS);
+  atualizarAnalise();
+}}
 
 // ── Helper para Tooltips ──
 function tooltip(info) {{
@@ -507,6 +612,7 @@ function showSatPanel(d) {{
     '<div class="field"><label>Frequencia (GHz)' + tooltip('Frequência da portadora RF do canal de downlink.') + '</label><input type="number" id="f_freq" step="0.1" value="' + d.frequency + '"></div>' +
     '<div class="field"><label>Potencia TX (W)' + tooltip('Potência elétrica RF de transmissão gerada pelo amplificador HPA/SSPA.') + '</label><input type="number" id="f_power" step="1" value="' + d.tx_power + '"></div>' +
     '<div class="field"><label>Ganho Antena TX Pico (dBi)' + tooltip('Ganho máximo de diretividade da antena de transmissão do satélite no centro do apontamento.') + '</label><input type="number" id="f_gain" step="0.5" value="' + d.tx_gain + '"></div>' +
+    '<div class="field"><label>Perda Guia de Onda TX (dB)' + tooltip('Perda de atenuação interna dos guias de onda ou cabos de transmissão no satélite antes da antena.') + '</label><input type="number" id="f_tx_loss" step="0.1" value="' + (d.tx_line_loss !== undefined ? d.tx_line_loss : 1.0) + '"></div>' +
     selectHtml +
     '<div class="field" id="f_pat_hpbw_field" style="display:' + hpbwStyle + ';"><label>Largura de Feixe θ_3dB (graus)' + tooltip('Abertura angular (HPBW) onde o ganho da antena cai 3 dB em relação ao pico.') + '</label><input type="number" id="f_pat_hpbw" step="0.1" value="' + (d.pattern_hpbw || 2.0) + '"></div>' +
     '<button class="save-btn" type="submit">&#128190; Salvar</button>' +
@@ -564,6 +670,7 @@ function saveSat(e) {{
   currentSat.frequency    = parseFloat(document.getElementById('f_freq').value);
   currentSat.tx_power     = parseFloat(document.getElementById('f_power').value);
   currentSat.tx_gain      = parseFloat(document.getElementById('f_gain').value);
+  currentSat.tx_line_loss = parseFloat(document.getElementById('f_tx_loss').value);
   currentSat.pattern_type = document.getElementById('f_pat_type').value;
   if (currentSat.pattern_type === 'Modelo Parabólico') {{
     currentSat.pattern_hpbw = parseFloat(document.getElementById('f_pat_hpbw').value);
@@ -625,9 +732,11 @@ function recalcLinks() {{
     var geo = calcularApontamento(st.lat, st.lng, nearest.lng);
     var satAnt = obterGanhoRealSat(nearest, geo.offAxis);
     var ptx_dbw = 10 * Math.log10(nearest.tx_power);
-    var eirp = ptx_dbw - LOSS_TX_LINE + satAnt.gain;
+    var txLoss = nearest.tx_line_loss !== undefined ? nearest.tx_line_loss : 1.0;
+    var eirp = ptx_dbw - txLoss + satAnt.gain;
     var fspl = 20 * Math.log10(geo.distance) + 20 * Math.log10(nearest.frequency) + 92.45;
-    var totalLosses = LOSS_ATM + LOSS_RAIN + LOSS_POINT + LOSS_POL + LOSS_RX_LINE;
+    var lossesDinamicas = calcularPerdasDinamicas(nearest.frequency, geo.elevation, USE_LOSS_ATM, USE_LOSS_RAIN);
+    var totalLosses = lossesDinamicas.atm + lossesDinamicas.rain + LOSS_POINT + LOSS_POL + LOSS_RX_LINE;
     var prx_dbw = eirp - fspl - totalLosses + st.rx_gain;
     var prx_dbm = prx_dbw + 30.0;
     
@@ -977,13 +1086,15 @@ function atualizarAnalise() {{
   // B. Ganhos e Perdas de Antena
   var satAnt = obterGanhoRealSat(sat, geo.offAxis);
   var ptx_dbw = 10 * Math.log10(sat.tx_power);
-  var eirp = ptx_dbw - LOSS_TX_LINE + satAnt.gain;
+  var txLoss = sat.tx_line_loss !== undefined ? sat.tx_line_loss : 1.0;
+  var eirp = ptx_dbw - txLoss + satAnt.gain;
   
   // C. FSPL (Free Space Path Loss)
   var fspl = 20 * Math.log10(geo.distance) + 20 * Math.log10(sat.frequency) + 92.45;
   
   // D. Potência Recebida e Margem de Link (Target BER 10^-6)
-  var totalLosses = LOSS_ATM + LOSS_RAIN + LOSS_POINT + LOSS_POL + LOSS_RX_LINE;
+  var lossesDinamicas = calcularPerdasDinamicas(sat.frequency, geo.elevation, USE_LOSS_ATM, USE_LOSS_RAIN);
+  var totalLosses = lossesDinamicas.atm + lossesDinamicas.rain + LOSS_POINT + LOSS_POL + LOSS_RX_LINE;
   var prx_dbw = eirp - fspl - totalLosses + st.rx_gain;
   var prx_dbm = prx_dbw + 30.0;
   
@@ -1015,7 +1126,16 @@ function atualizarAnalise() {{
     '<span class="badge badge-red">Margem Negativa (' + margem.toFixed(2) + ' dB)</span>';
   
   // Renderização ── TAB: LINK
-  var waterfallHtml = gerarWaterfallHtml(ptx_dbw, LOSS_TX_LINE, satAnt.gain, fspl, totalLosses, st.rx_gain, prx_dbw);
+  var waterfallHtml = gerarWaterfallHtml(ptx_dbw, txLoss, satAnt.gain, fspl, totalLosses, st.rx_gain, prx_dbw);
+  
+  var rainControlsHtml = '';
+  if (USE_LOSS_RAIN) {{
+    rainControlsHtml = 
+      '<div style="margin-top:8px; border-top:1px solid rgba(255,255,255,0.05); padding-top:6px; display:grid; grid-template-columns:1fr 1fr; gap:10px;">' +
+        '<div class="field" style="margin:0;"><label style="font-size:8px; color:#a6adc8;">Taxa R0.01 (mm/h) ' + tooltip('Intensidade de chuva estatística excedida em 0.01% do ano na região.') + '</label><input type="number" step="5" style="font-size:11px; padding:3px 5px;" value="' + RAIN_RATE + '" oninput="changeRainRate(this.value)"></div>' +
+        '<div class="field" style="margin:0;"><label style="font-size:8px; color:#a6adc8;">Indisp. P (%) ' + tooltip('Porcentagem de tempo de indisponibilidade desejada no ano (geralmente entre 0.001% e 1%).') + '</label><input type="number" step="0.001" style="font-size:11px; padding:3px 5px;" value="' + RAIN_PROB + '" oninput="changeRainProb(this.value)"></div>' +
+      '</div>';
+  }}
   
   var linkHtml = 
     '<div class="res-card"><h4>Geometria & Apontamento</h4>' +
@@ -1024,6 +1144,13 @@ function atualizarAnalise() {{
       '<div class="res-row"><span class="res-label">Off-Axis da Antena (Sat.) ' + tooltip('Desvio angular da estação em relação à direção principal do feixe de transmissão do satélite.') + '</span><span class="res-val">' + geo.offAxis.toFixed(2) + '&deg;</span></div>' +
     '</div>' +
     waterfallHtml +
+    '<div class="res-card"><h4>Condicoes Ambientais (Opcionais)</h4>' +
+      '<div style="display:flex; justify-content:space-around; align-items:center; font-size:11px; padding:3px 0;">' +
+        '<label style="display:flex; align-items:center; gap:5px; cursor:pointer;"><input type="checkbox" id="chk_loss_atm"' + (USE_LOSS_ATM ? ' checked' : '') + ' onchange="toggleLossAtm(this.checked)"> Atmosfera (' + lossesDinamicas.atm.toFixed(2) + ' dB)</label>' +
+        '<label style="display:flex; align-items:center; gap:5px; cursor:pointer;"><input type="checkbox" id="chk_loss_rain"' + (USE_LOSS_RAIN ? ' checked' : '') + ' onchange="toggleLossRain(this.checked)"> Chuva (' + lossesDinamicas.rain.toFixed(2) + ' dB)</label>' +
+      '</div>' +
+      rainControlsHtml +
+    '</div>' +
     '<div class="res-card"><h4>Nivel de Sinal Recebido & Margem</h4>' +
       '<div class="res-row"><span class="res-label">Ganho Antena Receptor ' + tooltip('Ganho máximo de diretividade da antena receptora.') + '</span><span class="res-val">' + st.rx_gain.toFixed(2) + ' dBi</span></div>' +
       '<div class="res-row"><span class="res-label">Potencia Recebida (Prx) ' + tooltip('Potência absoluta recebida convertida em dBm.') + '</span><span class="res-val" style="color:#a6e3a1;">' + prx_dbm.toFixed(2) + ' dBm</span></div>' +
@@ -1157,9 +1284,12 @@ function gerarPDFCliente() {{
   var geo = calcularApontamento(st.lat, st.lng, sat.lng);
   var satAnt = obterGanhoRealSat(sat, geo.offAxis);
   var ptx_dbw = 10 * Math.log10(sat.tx_power);
-  var eirp = ptx_dbw - LOSS_TX_LINE + satAnt.gain;
+  var txLoss = sat.tx_line_loss !== undefined ? sat.tx_line_loss : 1.0;
+  var eirp = ptx_dbw - txLoss + satAnt.gain;
   var fspl = 20 * Math.log10(geo.distance) + 20 * Math.log10(sat.frequency) + 92.45;
-  var totalLosses = LOSS_ATM + LOSS_RAIN + LOSS_POINT + LOSS_POL + LOSS_RX_LINE;
+  var lossAtm = USE_LOSS_ATM ? LOSS_ATM : 0.0;
+  var lossRain = USE_LOSS_RAIN ? LOSS_RAIN : 0.0;
+  var totalLosses = lossAtm + lossRain + LOSS_POINT + LOSS_POL + LOSS_RX_LINE;
   var prx_dbw = eirp - fspl - totalLosses + st.rx_gain;
   var prx_dbm = prx_dbw + 30.0;
   
@@ -1259,18 +1389,23 @@ function gerarPDFCliente() {{
   currentY += 2;
   drawSectionHeader("3. BALANCO DE POTENCIA (LINK BUDGET)");
   drawKeyValueRow([
-    ["Potencia do Transmissor", ptx_dbw.toFixed(1) + " dBW (" + sat.tx_power + "W)"],
-    ["Ganho Antena Sat", satAnt.gain.toFixed(1) + " dBi (" + satAnt.att.toFixed(1) + " dB at.)"],
+    ["Potencia HPA (Pt)", ptx_dbw.toFixed(1) + " dBW (" + sat.tx_power + "W)"],
+    ["Perda Guia Sat (Ltx)", txLoss.toFixed(1) + " dB"],
     ["EIRP do Satelite", eirp.toFixed(2) + " dBW"]
   ]);
   drawKeyValueRow([
-    ["Atenuacao por FSPL", fspl.toFixed(2) + " dB"],
-    ["Outras Perdas", totalLosses.toFixed(2) + " dB"],
-    ["Ganho Antena Receptor", st.rx_gain.toFixed(2) + " dBi"]
+    ["Ganho Antena (Gt)", satAnt.gain.toFixed(1) + " dBi (" + satAnt.att.toFixed(1) + " dB at.)"],
+    ["FSPL Loss", fspl.toFixed(2) + " dB"],
+    ["Ganho Antena RX (Grx)", st.rx_gain.toFixed(2) + " dBi"]
   ]);
+  
+  var statusAtm = USE_LOSS_ATM ? "ON" : "OFF";
+  var statusRain = USE_LOSS_RAIN ? "ON" : "OFF";
+  var otherLossesStr = totalLosses.toFixed(2) + " dB (Atm " + statusAtm + ", Ch " + statusRain + ")";
+  
   drawKeyValueRow([
-    ["Potencia Recebida (Prx)", prx_dbm.toFixed(2) + " dBm"],
-    ["Meta de BER", "10^-6"],
+    ["Outras Perdas", otherLossesStr],
+    ["Potencia Recebida", prx_dbm.toFixed(2) + " dBm"],
     ["Margem de Link", margem.toFixed(2) + " dB (" + (margem >= 0 ? "Aprovado" : "Falhou") + ")"]
   ]);
   

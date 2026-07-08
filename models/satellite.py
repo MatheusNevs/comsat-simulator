@@ -14,3 +14,5 @@ class Satellite:
     pattern_type: str = "Isotrópica"  # "Isotrópica", "Modelo Parabólico", "CSV"
     pattern_hpbw: float = 2.0         # Largura de feixe (θ_3dB) em graus
     pattern_data: Optional[List[List[float]]] = None  # Lista de [angulo, ganho_relativo]
+    tx_line_loss_db: float = 1.0      # Perda na linha de guia de onda/transmissão no satélite
+

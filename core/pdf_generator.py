@@ -212,7 +212,7 @@ def gerar_pdf_report_bytes(sat, stn, bw_mhz, rb_mbps, mod_type):
     sat_gain_real, sat_att = obter_ganho_real_sat(sat, off_axis)
     ptx_dbw = 10 * math.log10(sat.tx_power_w) if sat.tx_power_w > 0 else 0.0
     
-    LOSS_TX_LINE = 1.0
+    LOSS_TX_LINE = sat.tx_line_loss_db if hasattr(sat, 'tx_line_loss_db') else 1.0
     LOSS_ATM = 0.5
     LOSS_RAIN = 1.5
     LOSS_POINT = 0.5

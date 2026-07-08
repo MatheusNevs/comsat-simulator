@@ -31,13 +31,14 @@ def render_satellite_panel():
             ptx  = st.number_input("Potência TX (W)", value=100.0, step=5.0)
             gtx  = st.number_input("Ganho de Pico TX (dBi)", value=30.0, step=0.5)
             freq = st.number_input("Frequência (GHz)", value=12.0, step=0.5)
+            tx_loss = st.number_input("Perda de Guia de Onda TX (dB)", value=1.0, min_value=0.0, step=0.1)
             
             st.markdown("**Diagrama de Radiação**")
             pattern_type = st.selectbox("Tipo de Padrão", ["Isotrópica", "Modelo Parabólico", "Carregar CSV"])
             pattern_hpbw = st.number_input("Largura de feixe θ_3dB (graus)", value=2.0, min_value=0.1, step=0.1)
             
             arquivo_csv = st.file_uploader("Upload do CSV (Ângulo, Ganho_Relativo)", type=["csv"], help="CSV com duas colunas: angulo (graus) e ganho_relativo (dB)")
-
+ 
             if st.form_submit_button("➕ Adicionar Customizado", use_container_width=True) and nome:
                 pattern_data = None
                 if pattern_type == "Carregar CSV" and arquivo_csv is not None:
@@ -65,7 +66,8 @@ def render_satellite_panel():
                         frequency_ghz=freq,
                         pattern_type=pattern_type,
                         pattern_hpbw=pattern_hpbw,
-                        pattern_data=pattern_data
+                        pattern_data=pattern_data,
+                        tx_line_loss_db=tx_loss
                     )
                 )
                 st.rerun()
