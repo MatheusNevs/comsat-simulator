@@ -30,6 +30,11 @@ def render_station_panel():
             diameter = st.number_input("Diâmetro (m)", value=1.8, step=0.1, key="cb_diameter")
             efficiency = st.number_input("Eficiência (%)", value=60.0, step=5.0, key="cb_eff")
             
+            st.markdown("**Transmissor (Uplink)**")
+            ptx = st.number_input("Potência TX (W)", value=120.0, step=5.0, key="cb_ptx")
+            gtx = st.number_input("Ganho TX (dBi)", value=42.0, step=0.5, key="cb_gtx")
+            tx_loss = st.number_input("Perda Guia de Onda TX (dB)", value=0.5, step=0.1, key="cb_tx_loss")
+            
             st.markdown("**Ruído do Terminal**")
             t_ant = st.number_input("Temp. Antena (K)", value=50.0, step=5.0, key="cb_tant")
             t_lna = st.number_input("Temp. LNA (K)", value=80.0, step=5.0, key="cb_tlna")
@@ -54,7 +59,10 @@ def render_station_panel():
                         temp_lna_k=t_lna,
                         gain_lna_db=g_lna,
                         temp_down_k=t_down,
-                        nf_rec_db=nf_rec
+                        nf_rec_db=nf_rec,
+                        tx_power_w=ptx,
+                        tx_gain_dbi=gtx,
+                        tx_line_loss_db=tx_loss
                     )
                 )
                 st.rerun()
@@ -71,6 +79,11 @@ def render_station_panel():
             ganho_rx = st.number_input("Ganho RX (dBi)", value=40.0, step=0.5)
             diameter = st.number_input("Diâmetro (m)", value=1.8, step=0.1)
             efficiency = st.number_input("Eficiência (%)", value=60.0, step=5.0)
+            
+            st.markdown("**Transmissor (Uplink)**")
+            ptx = st.number_input("Potência TX (W)", value=120.0, step=5.0)
+            gtx = st.number_input("Ganho TX (dBi)", value=42.0, step=0.5)
+            tx_loss = st.number_input("Perda Guia de Onda TX (dB)", value=0.5, step=0.1)
             
             st.markdown("**Ruído do Terminal**")
             t_ant = st.number_input("Temp. Antena (K)", value=50.0, step=5.0)
@@ -93,7 +106,10 @@ def render_station_panel():
                         temp_lna_k=t_lna,
                         gain_lna_db=g_lna,
                         temp_down_k=t_down,
-                        nf_rec_db=nf_rec
+                        nf_rec_db=nf_rec,
+                        tx_power_w=ptx,
+                        tx_gain_dbi=gtx,
+                        tx_line_loss_db=tx_loss
                     )
                 )
                 st.rerun()

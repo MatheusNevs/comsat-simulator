@@ -30,8 +30,20 @@ def render_satellite_panel():
             lon  = st.number_input("Longitude (ex: -70 para 70°W)", value=0.0, step=0.5)
             ptx  = st.number_input("Potência TX (W)", value=100.0, step=5.0)
             gtx  = st.number_input("Ganho de Pico TX (dBi)", value=30.0, step=0.5)
-            freq = st.number_input("Frequência (GHz)", value=12.0, step=0.5)
+            freq = st.number_input("Frequência TX / Downlink (GHz)", value=12.0, step=0.5)
             tx_loss = st.number_input("Perda de Guia de Onda TX (dB)", value=1.0, min_value=0.0, step=0.1)
+            
+            st.markdown("**Configurações do Receptor (Uplink)**")
+            rx_freq = st.number_input("Frequência RX / Uplink (GHz)", value=14.0, step=0.5)
+            rx_gain = st.number_input("Ganho Antena RX (dBi)", value=30.0, step=0.5)
+            rx_loss = st.number_input("Perda Guia de Onda RX (dB)", value=1.0, min_value=0.0, step=0.1)
+            
+            with st.expander("Parâmetros do Receptor do Satélite"):
+                sat_t_ant = st.number_input("Sat. Temp. Antena (K)", value=290.0, step=10.0)
+                sat_t_lna = st.number_input("Sat. Temp. LNA (K)", value=150.0, step=10.0)
+                sat_g_lna = st.number_input("Sat. Ganho LNA (dB)", value=50.0, step=5.0)
+                sat_t_down = st.number_input("Sat. Temp. Downconverter (K)", value=290.0, step=10.0)
+                sat_nf_rec = st.number_input("Sat. Noise Figure Receptor (dB)", value=8.0, step=0.5)
             
             st.markdown("**Diagrama de Radiação**")
             pattern_type = st.selectbox("Tipo de Padrão", ["Isotrópica", "Modelo Parabólico", "Carregar CSV"])
@@ -64,10 +76,18 @@ def render_satellite_panel():
                         tx_power_w=ptx,
                         tx_gain_dbi=gtx,
                         frequency_ghz=freq,
+                        tx_line_loss_db=tx_loss,
+                        rx_frequency_ghz=rx_freq,
+                        rx_gain_dbi=rx_gain,
+                        rx_line_loss_db=rx_loss,
+                        sat_temp_antenna_k=sat_t_ant,
+                        sat_temp_lna_k=sat_t_lna,
+                        sat_gain_lna_db=sat_g_lna,
+                        sat_temp_down_k=sat_t_down,
+                        sat_nf_rec_db=sat_nf_rec,
                         pattern_type=pattern_type,
                         pattern_hpbw=pattern_hpbw,
-                        pattern_data=pattern_data,
-                        tx_line_loss_db=tx_loss
+                        pattern_data=pattern_data
                     )
                 )
                 st.rerun()

@@ -18,3 +18,9 @@ class GroundStation:
     gain_lna_db: float = 50.0
     temp_down_k: float = 290.0
     nf_rec_db: float = 8.0
+    
+    # Parâmetros de transmissão (Uplink)
+    tx_power_w: float = 120.0
+    tx_gain_dbi: float = 40.0
+    tx_line_loss_db: float = 0.5
+
