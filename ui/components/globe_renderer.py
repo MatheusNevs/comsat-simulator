@@ -942,6 +942,36 @@ function calcularBER(ebN0dB, modType) {{
   return 0.0;
 }}
 
+// Conversão de Lat/Lon/Alt para Cartesiano para cálculo exato de apontamento e separação angular
+function latLonToCartesian(lat, lon, altKm) {{
+  var Re = 6371.0;
+  var r = Re + altKm;
+  var latRad = lat * Math.PI / 180.0;
+  var lonRad = lon * Math.PI / 180.0;
+  return {{
+    x: r * Math.cos(latRad) * Math.cos(lonRad),
+    y: r * Math.cos(latRad) * Math.sin(lonRad),
+    z: r * Math.sin(latRad)
+  }};
+}}
+
+// Retorna a separação angular topocêntrica (em graus) vista da estação entre dois satélites
+function calcularAnguloSeparacao(st, lonSatA, lonSatB) {{
+  var pSt = latLonToCartesian(st.lat, st.lng, 0.0);
+  var pA = latLonToCartesian(0.0, lonSatA, 35786.0);
+  var pB = latLonToCartesian(0.0, lonSatB, 35786.0);
+  
+  var vA = {{ x: pA.x - pSt.x, y: pA.y - pSt.y, z: pA.z - pSt.z }};
+  var vB = {{ x: pB.x - pSt.x, y: pB.y - pSt.y, z: pB.z - pSt.z }};
+  
+  var dot = vA.x * vB.x + vA.y * vB.y + vA.z * vB.z;
+  var magA = Math.sqrt(vA.x*vA.x + vA.y*vA.y + vA.z*vA.z);
+  var magB = Math.sqrt(vB.x*vB.x + vB.y*vB.y + vB.z*vB.z);
+  
+  var cosAlpha = Math.max(-1.0, Math.min(1.0, dot / (magA * magB)));
+  return Math.acos(cosAlpha) * 180.0 / Math.PI;
+}}
+
 function calcularLinkCompleto(st, sat) {{
   var geo = calcularApontamento(st.lat, st.lng, sat.lng);
   
@@ -982,7 +1012,54 @@ function calcularLinkCompleto(st, sat) {{
   var K_DB = -228.6;
   var n0_sat = K_DB + 10 * Math.log10(t_sys_sat);
   var cn0_up = prx_dbw_up - n0_sat;
-  var cn_up = cn0_up - 10 * Math.log10(BW_MHZ * 1e6);
+  
+  // INTERFERÊNCIA DE SUBIDA (uASI): Outras estações transmitindo
+  var sum_i_u_lin = 0.0;
+  for (var k = 0; k < STNS.length; k++) {{
+    var st_k = STNS[k];
+    if (st_k.name === st.name) continue;
+    
+    if (!SATS.length) continue;
+    var sat_k = SATS.reduce(function(p, c) {{
+      return Math.abs(c.lng - st_k.lng) < Math.abs(p.lng - st_k.lng) ? c : p;
+    }});
+    
+    var theta_off_k = calcularAnguloSeparacao(st_k, sat_k.lng, sat.lng);
+    var diam_k = st_k.antenna_diameter || 1.8;
+    var hpbw_k = 70.0 / (f_up * diam_k);
+    var att_k = -12 * Math.pow(theta_off_k / hpbw_k, 2);
+    att_k = Math.max(-40.0, att_k);
+    
+    var gtx_k_dir = (st_k.tx_gain || 42.0) + att_k;
+    var ptx_w_k = st_k.tx_power || 120.0;
+    var ptx_dbw_k = 10 * Math.log10(ptx_w_k);
+    var tx_loss_k = st_k.tx_line_loss !== undefined ? st_k.tx_line_loss : 0.5;
+    var eirp_k = ptx_dbw_k - tx_loss_k + gtx_k_dir;
+    
+    var geo_k = calcularApontamento(st_k.lat, st_k.lng, sat.lng);
+    var fspl_k = 20 * Math.log10(geo_k.distance) + 20 * Math.log10(f_up) + 92.45;
+    var losses_k = calcularPerdasDinamicas(f_up, geo_k.elevation, USE_LOSS_ATM, USE_LOSS_RAIN);
+    var tot_losses_k = losses_k.atm + losses_k.rain + LOSS_POINT + LOSS_POL + rxLoss_up;
+    
+    var off_axis_sat_k = geo_k.offAxis;
+    var sat_rx_gain_k_att = obterGanhoRealSat(sat, off_axis_sat_k).att;
+    var sat_rx_gain_k = sat_rx_gain + sat_rx_gain_k_att;
+    
+    var prx_dbw_k = eirp_k - fspl_k - tot_losses_k + sat_rx_gain_k;
+    var psd_k_dbw_hz = prx_dbw_k - 10 * Math.log10(BW_MHZ * 1e6);
+    sum_i_u_lin += Math.pow(10, psd_k_dbw_hz / 10.0);
+  }}
+  
+  var cn0_up_lin = Math.pow(10, cn0_up / 10.0);
+  var ci0_up = 999.0;
+  if (sum_i_u_lin > 0.0) {{
+    var i0_u = 10 * Math.log10(sum_i_u_lin);
+    ci0_up = prx_dbw_up - i0_u;
+  }}
+  
+  var c_n0_i0_up_lin = 1.0 / ((1.0 / cn0_up_lin) + (1.0 / Math.pow(10, ci0_up / 10.0)));
+  var c_n0_i0_up = 10 * Math.log10(c_n0_i0_up_lin);
+  var cn_up = c_n0_i0_up - 10 * Math.log10(BW_MHZ * 1e6);
   
   // ==========================================
   // 2. DOWNLINK (Descida: Satélite -> Estação)
@@ -1013,14 +1090,53 @@ function calcularLinkCompleto(st, sat) {{
   var gt_gs = st.rx_gain - 10 * Math.log10(t_sys);
   var n0_gs = K_DB + 10 * Math.log10(t_sys);
   var cn0_down = prx_dbw_down - n0_gs;
-  var cn_down = cn0_down - 10 * Math.log10(BW_MHZ * 1e6);
+  
+  // INTERFERÊNCIA DE DESCIDA (dASI): Outros satélites transmitindo
+  var sum_i_d_lin = 0.0;
+  for (var i = 0; i < SATS.length; i++) {{
+    var sat_i = SATS[i];
+    if (sat_i.name === sat.name) continue;
+    
+    var theta_off_i = calcularAnguloSeparacao(st, sat.lng, sat_i.lng);
+    var diam_st = st.antenna_diameter || 1.8;
+    var hpbw_st = 70.0 / (f_down * diam_st);
+    var att_st_i = -12 * Math.pow(theta_off_i / hpbw_st, 2);
+    att_st_i = Math.max(-40.0, att_st_i);
+    
+    var grx_st_i = st.rx_gain + att_st_i;
+    
+    var geo_i = calcularApontamento(st.lat, st.lng, sat_i.lng);
+    var sat_att_i = obterGanhoRealSat(sat_i, geo_i.offAxis).att;
+    var sat_tx_gain_i = (sat_i.tx_gain || 35.0) + sat_att_i;
+    var ptx_w_i = sat_i.tx_power || 100.0;
+    var ptx_dbw_i = 10 * Math.log10(ptx_w_i);
+    var tx_loss_i = sat_i.tx_line_loss !== undefined ? sat_i.tx_line_loss : 1.0;
+    var eirp_i = ptx_dbw_i - tx_loss_i + sat_tx_gain_i;
+    
+    var fspl_i = 20 * Math.log10(geo_i.distance) + 20 * Math.log10(f_down) + 92.45;
+    var losses_i = calcularPerdasDinamicas(f_down, geo_i.elevation, USE_LOSS_ATM, USE_LOSS_RAIN);
+    var tot_losses_i = losses_i.atm + losses_i.rain + LOSS_POINT + LOSS_POL + LOSS_RX_LINE;
+    
+    var prx_dbw_i = eirp_i - fspl_i - tot_losses_i + grx_st_i;
+    var psd_i_dbw_hz = prx_dbw_i - 10 * Math.log10(BW_MHZ * 1e6);
+    sum_i_d_lin += Math.pow(10, psd_i_dbw_hz / 10.0);
+  }}
+  
+  var cn0_down_lin = Math.pow(10, cn0_down / 10.0);
+  var ci0_down = 999.0;
+  if (sum_i_d_lin > 0.0) {{
+    var i0_d = 10 * Math.log10(sum_i_d_lin);
+    ci0_down = prx_dbw_down - i0_d;
+  }}
+  
+  var c_n0_i0_down_lin = 1.0 / ((1.0 / cn0_down_lin) + (1.0 / Math.pow(10, ci0_down / 10.0)));
+  var c_n0_i0_down = 10 * Math.log10(c_n0_i0_down_lin);
+  var cn_down = c_n0_i0_down - 10 * Math.log10(BW_MHZ * 1e6);
   
   // ==========================================
-  // 3. COMBINADO (Total Uplink + Downlink)
+  // 3. COMBINADO (Total Uplink + Downlink + Interferência)
   // ==========================================
-  var cn0_up_lin = Math.pow(10, cn0_up / 10.0);
-  var cn0_down_lin = Math.pow(10, cn0_down / 10.0);
-  var cn0_total_lin = 1.0 / ((1.0 / cn0_up_lin) + (1.0 / cn0_down_lin));
+  var cn0_total_lin = 1.0 / ((1.0 / cn0_up_lin) + (1.0 / cn0_down_lin) + (1.0 / Math.pow(10, ci0_up / 10.0)) + (1.0 / Math.pow(10, ci0_down / 10.0)));
   var cn0_total = 10 * Math.log10(cn0_total_lin);
   
   var cn_total = cn0_total - 10 * Math.log10(BW_MHZ * 1e6);
@@ -1060,6 +1176,7 @@ function calcularLinkCompleto(st, sat) {{
       gt: gt_sat,
       n0: n0_sat,
       cn0: cn0_up,
+      ci0: ci0_up,
       cn: cn_up
     }},
     down: {{
@@ -1086,6 +1203,7 @@ function calcularLinkCompleto(st, sat) {{
       gt: gt_gs,
       n0: n0_gs,
       cn0: cn0_down,
+      ci0: ci0_down,
       cn: cn_down
     }},
     total: {{
@@ -1323,6 +1441,7 @@ function atualizarAnalise() {{
       '<div class="res-row"><span class="res-label">Perda por Chuva (Subida)</span><span class="res-val">' + up.losses.rain.toFixed(2) + ' dB</span></div>' +
       '<div class="res-row"><span class="res-label">Ganho Antena Satélite (Rx)</span><span class="res-val">' + up.rx_gain.toFixed(1) + ' dBi</span></div>' +
       '<div class="res-row"><span class="res-label">Potência Recebida no Satélite</span><span class="res-val" style="color:#f5c2e7;">' + up.prx_dbm.toFixed(1) + ' dBm</span></div>' +
+      '<div class="res-row"><span class="res-label">C/I₀ de Subida (uASI) ' + tooltip('Relação Portadora/Interferência na subida gerada por transmissões de outras estações do cenário.') + '</span><span class="res-val" style="color:#f9e2af;">' + (up.ci0 < 500.0 ? up.ci0.toFixed(1) + ' dB-Hz' : 'N/A') + '</span></div>' +
     '</div>' +
     waterfallUp +
     
@@ -1336,6 +1455,7 @@ function atualizarAnalise() {{
       '<div class="res-row"><span class="res-label">Perda por Chuva (Descida)</span><span class="res-val">' + down.losses.rain.toFixed(2) + ' dB</span></div>' +
       '<div class="res-row"><span class="res-label">Ganho Antena Estação (Rx)</span><span class="res-val">' + down.rx_gain.toFixed(1) + ' dBi</span></div>' +
       '<div class="res-row"><span class="res-label">Potência Recebida na Estação</span><span class="res-val" style="color:#89b4fa;">' + down.prx_dbm.toFixed(1) + ' dBm</span></div>' +
+      '<div class="res-row"><span class="res-label">C/I₀ de Descida (dASI) ' + tooltip('Relação Portadora/Interferência na descida devido a outros satélites adjacentes transmitindo na mesma frequência.') + '</span><span class="res-val" style="color:#f9e2af;">' + (down.ci0 < 500.0 ? down.ci0.toFixed(1) + ' dB-Hz' : 'N/A') + '</span></div>' +
     '</div>' +
     waterfallDown +
     
@@ -1347,8 +1467,9 @@ function atualizarAnalise() {{
       rainControlsHtml +
     '</div>' +
     
-    '<div class="res-card" style="border-left: 4px solid #a6e3a1; background: rgba(166, 227, 161, 0.035);"><h4>Desempenho Combinado (Uplink + Downlink)</h4>' +
-      '<div class="res-row"><span class="res-label">Eb/N0 Total Obtido</span><span class="res-val" style="color:#a6e3a1; font-weight:bold;">' + total.ebn0.toFixed(2) + ' dB</span></div>' +
+    '<div class="res-card" style="border-left: 4px solid #a6e3a1; background: rgba(166, 227, 161, 0.035);"><h4>Desempenho Combinado (com Interferência)</h4>' +
+      '<div class="res-row"><span class="res-label">C/(N₀+I₀) total Combinado</span><span class="res-val" style="color:#f9e2af; font-weight:bold;">' + total.cn0.toFixed(2) + ' dB-Hz</span></div>' +
+      '<div class="res-row"><span class="res-label">Eb/(N₀+I₀) Total Obtido</span><span class="res-val" style="color:#a6e3a1; font-weight:bold;">' + total.ebn0.toFixed(2) + ' dB</span></div>' +
       '<div class="res-row"><span class="res-label">Eb/N0 Requerido (BER 10⁻⁶)</span><span class="res-val">' + total.ebn0_req.toFixed(1) + ' dB</span></div>' +
       '<div style="text-align:center; margin-top:10px;">' + margemBadge + '</div>' +
     '</div>';
@@ -1368,7 +1489,8 @@ function atualizarAnalise() {{
     '<div class="res-card" style="border-left: 4px solid #f5c2e7;"><h4>Receptor do Satelite (Uplink)</h4>' +
       '<div class="res-row"><span class="res-label">Temp. Ruido Sistema (Tsys)</span><span class="res-val" style="color:#f9e2af;">' + up.t_sys.toFixed(1) + ' K</span></div>' +
       '<div class="res-row"><span class="res-label">Figura de Merito G/T</span><span class="res-val">' + up.gt.toFixed(2) + ' dB/K</span></div>' +
-      '<div class="res-row"><span class="res-label">Relacao C/N0 Subida</span><span class="res-val" style="color:#f5c2e7;">' + up.cn0.toFixed(2) + ' dB-Hz</span></div>' +
+      '<div class="res-row"><span class="res-label">C/N₀ Subida (térmico)</span><span class="res-val">' + up.cn0.toFixed(2) + ' dB-Hz</span></div>' +
+      '<div class="res-row"><span class="res-label">C/(N₀+I₀) Subida (c/ Interf.)</span><span class="res-val" style="color:#f5c2e7; font-weight:bold;">' + (10 * Math.log10(1.0 / ((1.0 / Math.pow(10, up.cn0 / 10.0)) + (1.0 / Math.pow(10, up.ci0 / 10.0))))).toFixed(2) + ' dB-Hz</span></div>' +
       '<table style="width:100%; border-collapse:collapse; margin-top:10px; font-size:10px; text-align:left;">' +
         '<thead>' +
           '<tr style="border-bottom:1px solid rgba(245,194,231,0.3); color:#f5c2e7; font-weight:bold;">' +
@@ -1404,7 +1526,8 @@ function atualizarAnalise() {{
     '<div class="res-card" style="border-left: 4px solid #89b4fa;"><h4>Receptor da Estacao (Downlink)</h4>' +
       '<div class="res-row"><span class="res-label">Temp. Ruido Sistema (Tsys)</span><span class="res-val" style="color:#f9e2af;">' + down.t_sys.toFixed(1) + ' K</span></div>' +
       '<div class="res-row"><span class="res-label">Figura de Merito G/T</span><span class="res-val">' + down.gt.toFixed(2) + ' dB/K</span></div>' +
-      '<div class="res-row"><span class="res-label">Relacao C/N0 Descida</span><span class="res-val" style="color:#89b4fa;">' + down.cn0.toFixed(2) + ' dB-Hz</span></div>' +
+      '<div class="res-row"><span class="res-label">C/N₀ Descida (térmico)</span><span class="res-val">' + down.cn0.toFixed(2) + ' dB-Hz</span></div>' +
+      '<div class="res-row"><span class="res-label">C/(N₀+I₀) Descida (c/ Interf.)</span><span class="res-val" style="color:#89b4fa; font-weight:bold;">' + (10 * Math.log10(1.0 / ((1.0 / Math.pow(10, down.cn0 / 10.0)) + (1.0 / Math.pow(10, down.ci0 / 10.0))))).toFixed(2) + ' dB-Hz</span></div>' +
       '<table style="width:100%; border-collapse:collapse; margin-top:10px; font-size:10px; text-align:left;">' +
         '<thead>' +
           '<tr style="border-bottom:1px solid rgba(137,220,235,0.3); color:#89b4fa; font-weight:bold;">' +
@@ -1437,11 +1560,11 @@ function atualizarAnalise() {{
       '</table>' +
     '</div>' +
     
-    '<div class="res-card" style="border-left: 4px solid #a6e3a1;"><h4>Portadora & Ruído Combinado no Canal</h4>' +
-      '<div class="res-row"><span class="res-label">C/N0 Combinado</span><span class="res-val" style="color:#a6e3a1; font-weight:bold;">' + total.cn0.toFixed(2) + ' dB-Hz</span></div>' +
+    '<div class="res-card" style="border-left: 4px solid #a6e3a1;"><h4>Portadora, Ruído & Interferência Combinados</h4>' +
+      '<div class="res-row"><span class="res-label">C/(N₀+I₀) Combinado total</span><span class="res-val" style="color:#a6e3a1; font-weight:bold;">' + total.cn0.toFixed(2) + ' dB-Hz</span></div>' +
       '<div class="field" style="margin-top:10px;"><label>Largura de Banda do Canal (MHz) ' + tooltip('Largura de banda do transponder RF ocupada pelo sinal transmitido.') + '</label>' +
       '<input type="number" id="inp_bw" step="1" value="' + BW_MHZ + '" oninput="changeBW(this.value)"></div>' +
-      '<div class="res-row"><span class="res-label">C/N Combinado no Canal</span><span class="res-val" style="font-weight:bold;">' + total.cn.toFixed(2) + ' dB</span></div>' +
+      '<div class="res-row"><span class="res-label">C/(N+I) total no Canal</span><span class="res-val" style="font-weight:bold;">' + total.cn.toFixed(2) + ' dB</span></div>' +
     '</div>';
   document.getElementById('tab-noise').innerHTML = noiseHtml;
   
@@ -1611,7 +1734,7 @@ function gerarPDFCliente() {{
   drawKeyValueRow([
     ["Potencia Recebida", up.prx_dbm.toFixed(2) + " dBm"],
     ["Perdas Guia Sat (Lrx)", up.rx_loss.toFixed(1) + " dB"],
-    ["C/N0 de Subida", up.cn0.toFixed(2) + " dB-Hz"]
+    ["C/N0 (term) / C/I0", up.cn0.toFixed(1) + " / " + (up.ci0 < 500 ? up.ci0.toFixed(1) : "N/A") + " dB-Hz"]
   ]);
   
   // Seção 4: Downlink
@@ -1635,19 +1758,19 @@ function gerarPDFCliente() {{
   drawKeyValueRow([
     ["Potencia Recebida", down.prx_dbm.toFixed(2) + " dBm"],
     ["Perdas Guia Est (Lrx)", LOSS_RX_LINE.toFixed(1) + " dB"],
-    ["C/N0 de Descida", down.cn0.toFixed(2) + " dB-Hz"]
+    ["C/N0 (term) / C/I0", down.cn0.toFixed(1) + " / " + (down.ci0 < 500 ? down.ci0.toFixed(1) : "N/A") + " dB-Hz"]
   ]);
 
   // Seção 5: Combinado
   currentY += 2;
   drawSectionHeader("5. DESEMPENHO COMBINADO (TOTAL)");
   drawKeyValueRow([
-    ["C/N0 Combinado", total.cn0.toFixed(2) + " dB-Hz"],
+    ["C/(N0+I0) Combinado", total.cn0.toFixed(2) + " dB-Hz"],
     ["Largura de Banda", BW_MHZ.toFixed(1) + " MHz"],
-    ["C/N no Canal", total.cn.toFixed(2) + " dB"]
+    ["C/(N+I) no Canal", total.cn.toFixed(2) + " dB"]
   ]);
   drawKeyValueRow([
-    ["Eb/N0 Total Obtido", total.ebn0.toFixed(2) + " dB"],
+    ["Eb/(N0+I0) Obtido", total.ebn0.toFixed(2) + " dB"],
     ["Eb/N0 Requerido", total.ebn0_req.toFixed(1) + " dB"],
     ["Margem Combinada", total.margem.toFixed(2) + " dB (" + (total.margem >= 0 ? "Aprovado" : "Falhou") + ")"]
   ]);
@@ -1748,7 +1871,7 @@ function gerarPDFCliente() {{
   drawKeyValueRow([
     ["Taxa de Bits (Rb)", RB_MBPS.toFixed(1) + " Mbps"],
     ["Modulacao Ativa", MOD_TYPE],
-    ["Eb/N0 Combinado", total.ebn0.toFixed(2) + " dB"]
+    ["Eb/(N0+I0) Combinado", total.ebn0.toFixed(2) + " dB"]
   ]);
   drawKeyValueRow([
     ["BER Combinada Estimada", total.ber.toExponential(3)],
