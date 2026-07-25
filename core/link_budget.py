@@ -1,11 +1,36 @@
+"""
+Módulo de Cálculo de Balanço de Enlace (Link Budget) - (core/link_budget.py)
+
+Implementa as equações de propagação e balanço de potência em RF para enlaces via satélite:
+- Geometria esférica e distância oblíqua (slant range)
+- Ângulo de elevação da antena da estação terrena
+- Perda no espaço livre (FSPL - Free Space Path Loss)
+- Atenuação atmosférica e por chuva (Modelos estatísticos ITU-R P.618 / ITU-R P.838)
+- Potência Isotrópica Radiada Efetiva (EIRP) e Potência Recebida (Prx em dBW e dBm)
+"""
+
 import math
 
-R_EARTH_KM = 6371.0
-GEO_ALTITUDE_KM = 35786.0
+# Constantes geodésicas e orbitais
+R_EARTH_KM = 6371.0       # Raio médio da Terra em km
+GEO_ALTITUDE_KM = 35786.0  # Altitude da órbita GEO em km
 
-def calcular_distancia_e_elevacao(lat_st, lon_st, lon_sat, alt_sat_km=GEO_ALTITUDE_KM):
+
+def calcular_distancia_e_elevacao(lat_st: float, lon_st: float, lon_sat: float, alt_sat_km: float = GEO_ALTITUDE_KM):
     """
-    Calcula a distância 3D (slant range) e o ângulo de elevação da estação para o satélite GEO.
+    Calcula a distância 3D em linha de visada (slant range) e o ângulo de elevação da antena da estação
+    terrena em relação a um satélite geoestacionário.
+
+    Parâmetros:
+        lat_st (float): Latitude da estação terrena (graus).
+        lon_st (float): Longitude da estação terrena (graus).
+        lon_sat (float): Longitude orbital do satélite GEO (graus).
+        alt_sat_km (float): Altitude do satélite em km (default: 35786 km).
+
+    Retorna:
+        tuple[float, float]:
+            - distancia (float): Distância no espaço livre (slant range) em km.
+            - elevacao (float): Ângulo de elevação da antena em graus.
     """
     r_sat = R_EARTH_KM + alt_sat_km
     
@@ -13,7 +38,7 @@ def calcular_distancia_e_elevacao(lat_st, lon_st, lon_sat, alt_sat_km=GEO_ALTITU
     lon_st_rad = math.radians(lon_st)
     lon_sat_rad = math.radians(lon_sat)
     
-    # Cartesianas
+    # Conversão para coordenadas cartesianas geocêntricas
     x_st = R_EARTH_KM * math.cos(lat_rad) * math.cos(lon_st_rad)
     y_st = R_EARTH_KM * math.cos(lat_rad) * math.sin(lon_st_rad)
     z_st = R_EARTH_KM * math.sin(lat_rad)
@@ -22,12 +47,13 @@ def calcular_distancia_e_elevacao(lat_st, lon_st, lon_sat, alt_sat_km=GEO_ALTITU
     y_sat = r_sat * math.sin(lon_sat_rad)
     z_sat = 0.0
     
+    # Distância Euclidiana 3D (slant range)
     dx = x_sat - x_st
     dy = y_sat - y_st
     dz = z_sat - z_st
     distancia = math.sqrt(dx*dx + dy*dy + dz*dz)
     
-    # Ângulo de Elevação (de acordo com a geometria esférica)
+    # Cálculo do Ângulo de Elevação (geometria esférica)
     delta_lon = lon_st_rad - lon_sat_rad
     cos_beta = math.cos(lat_rad) * math.cos(delta_lon)
     cos_beta = max(-1.0, min(1.0, cos_beta))
@@ -41,7 +67,18 @@ def calcular_distancia_e_elevacao(lat_st, lon_st, lon_sat, alt_sat_km=GEO_ALTITU
         
     return distancia, elevacao
 
-def obter_coeficientes_chuva(freq_ghz):
+
+def obter_coeficientes_chuva(freq_ghz: float):
+    """
+    Obtém os coeficientes a e b da tabela ITU-R P.838 para cálculo da atenuação por chuva
+    específica (gamma = a * R^b) via interpolação logarítmica para a frequência dada em GHz.
+
+    Parâmetros:
+        freq_ghz (float): Frequência da onda portadora em GHz.
+
+    Retorna:
+        tuple[float, float]: Coeficientes (a, b) interpolados.
+    """
     freqs = [4, 6, 12, 20, 30]
     a_vals = [0.00075, 0.0028, 0.024, 0.092, 0.24]
     b_vals = [1.08, 1.12, 1.15, 1.08, 0.98]
@@ -60,19 +97,37 @@ def obter_coeficientes_chuva(freq_ghz):
             return a, b
     return 0.024, 1.15
 
-def calcular_perdas_dinamicas(freq_ghz, elevacao_deg, rain_rate=50.0, rain_prob=0.01, use_atm=True, use_rain=True):
+
+def calcular_perdas_dinamicas(freq_ghz: float, elevacao_deg: float, rain_rate: float = 50.0,
+                             rain_prob: float = 0.01, use_atm: bool = True, use_rain: bool = True):
+    """
+    Calcula as atenuações dinâmicas de sinal devido à atmosfera (gases) e precipitação pluviométrica (chuva).
+
+    Parâmetros:
+        freq_ghz (float): Frequência de operação em GHz.
+        elevacao_deg (float): Ângulo de elevação da antena em graus.
+        rain_rate (float): Taxa de chuva em mm/h (default: 50 mm/h).
+        rain_prob (float): Probabilidade de excedência do tempo no ano (ex: 0.01 = 99.99% disponibilidade).
+        use_atm (bool): Habilita/desabilita atenuação atmosférica por gases.
+        use_rain (bool): Habilita/desabilita atenuação por chuva.
+
+    Retorna:
+        tuple[float, float]: Perda atmosférica (dB) e Perda por chuva (dB).
+    """
     elev_rad = math.radians(max(5.0, elevacao_deg))
     sin_elev = math.sin(elev_rad)
     
+    # 1. Atenuação Gasosa/Atmosférica no zênite
     loss_atm = 0.0
     if use_atm:
         loss_atm = 0.15 / sin_elev
-        loss_atm = min(3.0, loss_atm)
+        loss_atm = min(3.0, loss_atm)  # Limite máximo de atenuação padrão para segurança
         
+    # 2. Atenuação por Chuva (Modelo ITU-R P.618 simplificado)
     loss_rain = 0.0
     if use_rain:
-        h_s = 1.17
-        h_R = 4.0
+        h_s = 1.17  # Altitude de referência da estação (km)
+        h_R = 4.0   # Altura da chuva acima do nível do mar (km)
         L_s = (h_R - h_s) / sin_elev
         L_G = L_s * math.cos(elev_rad)
         
@@ -98,9 +153,16 @@ def calcular_perdas_dinamicas(freq_ghz, elevacao_deg, rain_rate=50.0, rain_prob=
             
     return loss_atm, loss_rain
 
-def calcular_tudo(params):
+
+def calcular_tudo(params: dict):
     """
-    Orquestra os cálculos do Link Budget com suporte a atenuação atmosférica e por chuva dinâmica.
+    Orquestrador completo dos cálculos de Link Budget (Balanço de Potência).
+
+    Parâmetros:
+        params (dict): Dicionário contendo parâmetros do sistema (frequência, potências, ganhos, coordenadas, etc.).
+
+    Retorna:
+        dict: Dicionário detalhado com os resultados do enlace (distância, elevação, EIRP, FSPL, Prx em dBW/dBm, perdas).
     """
     freq_ghz = params.get('frequencia_ghz', 12.0)
     ptx_w = params.get('potencia_tx_w', 100.0)
@@ -121,28 +183,28 @@ def calcular_tudo(params):
     perdas_rx = params.get('perdas_linha_rx_db', 0.5)
     grx_dbi = params.get('ganho_rx_dbi', 40.0)
     
-    # 1. Distância e Elevação
+    # 1. Distância (Slant Range) e Elevação
     distancia_km, elevacao = calcular_distancia_e_elevacao(lat_st, lon_st, lon_sat)
     
-    # 2. Potência em dBW
+    # 2. Potência Transmitida em dBW
     ptx_dbw = 10 * math.log10(ptx_w) if ptx_w > 0 else -100.0
 
-    # 3. EIRP (dBW)
+    # 3. Potência Isotrópica Radiada Efetiva - EIRP (dBW)
     eirp = ptx_dbw - perdas_tx + gtx_dbi
 
-    # 4. FSPL (Free Space Path Loss) em dB
+    # 4. Perda no Espaço Livre - FSPL (Free Space Path Loss em dB)
     if distancia_km > 0 and freq_ghz > 0:
         fspl = 20 * math.log10(distancia_km) + 20 * math.log10(freq_ghz) + 92.45
     else:
         fspl = 0.0
 
-    # 5. Perdas dinâmicas por atmosfera e chuva
+    # 5. Perdas dinâmicas (Atmosfera, Chuva, Apontamento, Polarização, Linhas)
     loss_atm, loss_rain = calcular_perdas_dinamicas(freq_ghz, elevacao, rain_rate, rain_prob, use_atm, use_rain)
     outras_perdas = loss_atm + loss_rain + perda_apont + perda_pol + perdas_rx
 
-    # 6. Potência Recebida (dBW)
+    # 6. Potência Recebida (dBW e dBm)
     pot_recebida_dbw = eirp - fspl - outras_perdas + grx_dbi
-    pot_recebida_dbm = pot_recebida_dbw + 30
+    pot_recebida_dbm = pot_recebida_dbw + 30.0
 
     return {
         "distancia_km": round(distancia_km, 2),

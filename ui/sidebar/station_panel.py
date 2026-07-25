@@ -1,6 +1,14 @@
+"""
+Painel Lateral de Gerenciamento de Estações Terrenas (ui/sidebar/station_panel.py)
+
+Interface Streamlit para cadastro de estações terrenas a partir de cidades pré-definidas no Brasil
+ou customizadas via entrada direta de latitude/longitude e parâmetros de antena/ruído.
+"""
+
 import streamlit as st
 from models.ground_station import GroundStation
 
+# Catálogo de cidades pré-configuradas no Brasil com coordenadas geográficas aproximadas
 CIDADES_BASE = {
     "Brasília":        {"lat": -15.79, "lon": -47.88},
     "São Paulo":       {"lat": -23.55, "lon": -46.63},
@@ -13,8 +21,12 @@ CIDADES_BASE = {
 
 
 def render_station_panel():
+    """
+    Renderiza os formulários da barra lateral para adição e remoção de estações terrenas no cenário.
+    """
     st.sidebar.header("📡 Estações Terrenas")
 
+    # Inicialização da lista de estações na sessão Streamlit
     if 'stations' not in st.session_state:
         st.session_state['stations'] = []
 
@@ -23,7 +35,7 @@ def render_station_panel():
     if modo == "Cidade Base":
         escolha  = st.sidebar.selectbox("Selecione:", list(CIDADES_BASE.keys()), label_visibility="collapsed")
         
-        # Parâmetros de antena e ruído expansíveis
+        # Formulário expansível de parâmetros de antena e ruído da estação
         with st.sidebar.expander("Configurações da Estação"):
             gain_mode = st.radio("Ganho de Antena por:", ["Valor Direto", "Diâmetro e Eficiência"], key="cb_gain_mode")
             ganho_rx = st.number_input("Ganho RX (dBi)", value=40.0, step=0.5, key="cb_gain")
@@ -114,7 +126,7 @@ def render_station_panel():
                 )
                 st.rerun()
 
-    # Lista de estações no cenário com botão de remoção
+    # Lista de estações terrenas no cenário com suporte à exclusão
     stations = st.session_state['stations']
     if stations:
         st.sidebar.markdown("**No cenário:**")

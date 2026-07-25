@@ -1,3 +1,10 @@
+"""
+Painel Lateral de Gerenciamento de Satélites (ui/sidebar/satellite_panel.py)
+
+Interface Streamlit para seleção de satélites pré-definidos do catálogo ou cadastro customizado
+com parâmetros de transmissão, recepção (uplink/downlink) e importação de diagramas de radiação.
+"""
+
 import streamlit as st
 import pandas as pd
 from data.satellites import CATALOGO_SATELITES
@@ -5,8 +12,12 @@ from models.satellite import Satellite
 
 
 def render_satellite_panel():
+    """
+    Renderiza o formulário da barra lateral para adicionar, configurar e remover satélites do cenário.
+    """
     st.sidebar.header("🛰️ Satélites")
 
+    # Garante a inicialização da lista de satélites na sessão
     if 'satellites' not in st.session_state:
         st.session_state['satellites'] = []
 
@@ -17,7 +28,7 @@ def render_satellite_panel():
         escolha = st.sidebar.selectbox("Selecione:", nomes, label_visibility="collapsed")
         if st.sidebar.button("➕ Adicionar ao Cenário", key="btn_add_sat_catalogo", use_container_width=True):
             dados = next(item for item in CATALOGO_SATELITES if item["name"] == escolha)
-            # Evita duplicatas pelo nome
+            # Evita a duplicação de satélites com o mesmo nome no cenário
             nomes_atuais = [s.name for s in st.session_state['satellites']]
             if dados["name"] not in nomes_atuais:
                 st.session_state['satellites'].append(Satellite(**dados))
@@ -50,18 +61,18 @@ def render_satellite_panel():
             pattern_hpbw = st.number_input("Largura de feixe θ_3dB (graus)", value=2.0, min_value=0.1, step=0.1)
             
             arquivo_csv = st.file_uploader("Upload do CSV (Ângulo, Ganho_Relativo)", type=["csv"], help="CSV com duas colunas: angulo (graus) e ganho_relativo (dB)")
- 
+
             if st.form_submit_button("➕ Adicionar Customizado", use_container_width=True) and nome:
                 pattern_data = None
                 if pattern_type == "Carregar CSV" and arquivo_csv is not None:
                     try:
                         df = pd.read_csv(arquivo_csv)
-                        # Limpa nomes de colunas
+                        # Limpeza e padronização dos nomes de colunas
                         df.columns = [c.strip().lower() for c in df.columns]
-                        # Detecta colunas de ângulo e ganho
+                        # Identifica automaticamente as colunas de ângulo e ganho
                         angle_col = next((c for c in df.columns if "ang" in c or "deg" in c), df.columns[0])
                         gain_col = next((c for c in df.columns if "gan" in c or "gain" in c or "rel" in c), df.columns[1])
-                        # Ordena e remove nulos
+                        # Ordenação por ângulo e remoção de valores nulos
                         df_clean = df[[angle_col, gain_col]].dropna().sort_values(by=angle_col)
                         pattern_data = df_clean.values.tolist()
                     except Exception as e:
@@ -92,7 +103,7 @@ def render_satellite_panel():
                 )
                 st.rerun()
 
-    # Lista de satélites no cenário com botão de remoção
+    # Exibição da lista de satélites ativos no cenário com opção de remoção
     sats = st.session_state['satellites']
     if sats:
         st.sidebar.markdown("**No cenário:**")

@@ -1,9 +1,19 @@
+"""
+Renderizador WebGL de Globo 3D Interativo (ui/components/globe_renderer.py)
+
+Gera a aplicação HTML/JavaScript completa integrada com a biblioteca Globe.gl e Three.js
+para visualização tridimensional da Terra, anel de Clarke (GEO), satélites, pegada de potência (footprint),
+enlaces ativos e painel de análise em tempo real.
+"""
+
 import json
 
-GEO_ALT = 0.6  # altitude relativa no globe.gl (0 = superfície, 1 = raio acima)
+GEO_ALT = 0.6  # Altitude relativa no Globe.gl (0 = superfície da Terra, 1 = 1 raio terrestre acima)
 
 
 def _satellites_json(satellites):
+    """Serializa a lista de objetos Satellite para representação em JSON utilizada pelo Globe.gl."""
+
     return json.dumps([{
         "id": i,
         "name": s.name,

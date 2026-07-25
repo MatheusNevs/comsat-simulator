@@ -1,9 +1,18 @@
+"""
+Módulo Gerador de Relatórios Técnicos em PDF (core/pdf_generator.py)
+
+Utiliza a biblioteca fpdf2 para gerar um documento PDF técnico completo e estilizado
+contendo todos os resultados do Link Budget, geometria de visibilidade, análise de ruído
+via cascata de Friis, parâmetros de modulação e o gráfico vetorial de curvas de BER.
+"""
+
 import io
 import math
 from fpdf import FPDF
 from core.link_budget import calcular_distancia_e_elevacao, R_EARTH_KM, GEO_ALTITUDE_KM
 from core.noise import calcular_temperatura_sistema, calcular_gt_e_ruido
 from core.modulation import calcular_ber, calcular_eb_n0, erfc
+
 
 def obter_ganho_real_sat(sat, off_axis_angle):
     peak = sat.tx_gain_dbi

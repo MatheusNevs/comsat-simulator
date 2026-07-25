@@ -9,11 +9,13 @@ dist/
 build/
 *.whl
 
-# Virtual environments
+# Virtual environments & Agent configs
 venv/
 .venv/
 env/
 .env/
+.agents/
+
 
 # Streamlit
 .streamlit/
